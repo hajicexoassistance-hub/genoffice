@@ -1,6 +1,13 @@
-import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, join, resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { normalizePath } from 'vite'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
+
+const require = createRequire(import.meta.url)
+const pdfjsRoot = dirname(dirname(require.resolve('pdfjs-dist/package.json')))
+const pdfjsDir = (sub: string) => normalizePath(join(pdfjsRoot, 'pdfjs-dist', sub))
 
 // Resolve workspace packages from this checkout's sources: in a git worktree
 // node_modules is a symlink into the main checkout, so bare specifiers would
@@ -37,7 +44,16 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ['@genoffice/electron-utils'] })],
   },
   renderer: {
-    plugins: [react()],
+    plugins: [
+      react(),
+      viteStaticCopy({
+        targets: [
+          { src: pdfjsDir('cmaps'), dest: 'pdfjs' },
+          { src: pdfjsDir('standard_fonts'), dest: 'pdfjs' },
+          { src: pdfjsDir('wasm'), dest: 'pdfjs' },
+        ],
+      }),
+    ],
     resolve: { alias: localAlias },
     server: {
       // Overridable so multiple genoffice dev instances can coexist (default 5173).

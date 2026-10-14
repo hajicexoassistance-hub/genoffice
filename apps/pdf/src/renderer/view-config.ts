@@ -16,7 +16,7 @@ export const SIDEBAR_W_MIN = 120
 export const SIDEBAR_CHROME = 24
 
 export const clampSidebarW = (w: number): number =>
-  Math.min(Math.max(w, SIDEBAR_W_MIN), Math.min(320, Math.round(window.innerWidth * 0.4)))
+  Math.min(Math.max(w, SIDEBAR_W_MIN), Math.round(window.innerWidth * 0.5))
 
 export const loadSidebarW = (): number => {
   const saved = Number(localStorage.getItem(SIDEBAR_W_KEY))

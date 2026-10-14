@@ -7615,6 +7615,11 @@ body.docs-crop-active
   color: var(--color-text-primary);
 }
 
+.ai-header-btn.active {
+  background: var(--accent-soft, #e8f1fb);
+  color: var(--word-blue, #185abd);
+}
+
 /* collapsed AI sidebar: thin rail on the left edge */
 .ai-rail {
   display: flex;

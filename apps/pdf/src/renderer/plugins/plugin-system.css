@@ -1,0 +1,558 @@
+/* ============================================================
+   GenOffice PDF Plugin System — Base Styles
+   
+   Adheres to Microsoft Fluent & GenOffice design tokens:
+   - Adopsi styling manuscriber untuk konsistensi tinggi bar & layout
+   - Single 47px bar height matching Genspark AI panel and headers
+   - Ribbon display: contents untuk 100% keserasian 80px ribbon band
+   - Zero hardcoded colors (seamless light and dark mode adaptation)
+   ============================================================ */
+
+/* ── Plugin Sidebar Panel ────────────────────────────────────── */
+
+.plugin-sidebar-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  background: var(--surface, #ffffff);
+  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  font-family: inherit;
+  color: var(--text, #1e1e1e);
+  max-width: 50vw;
+  z-index: 20;
+}
+
+[data-theme='dark'] .plugin-sidebar-panel {
+  border-left-color: var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--surface, #252526);
+  color: var(--text, #cccccc);
+}
+
+.plugin-sidebar-panel.resizing {
+  transition: none !important;
+  user-select: none;
+}
+
+.plugin-sidebar-panel.collapsed {
+  width: 34px !important;
+}
+
+.plugin-sidebar-panel.open {
+  width: var(--plugin-sidebar-width, 360px);
+  max-width: 50vw;
+}
+
+/* Horizontal resizer drag handle (on left edge) */
+.plugin-sidebar-resizer {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 30;
+  background: transparent;
+}
+
+.plugin-sidebar-resizer:hover,
+.plugin-sidebar-panel.resizing .plugin-sidebar-resizer {
+  background: var(--accent, #c43e1c);
+  opacity: 0.35;
+}
+
+/* Thin icon rail when collapsed */
+.plugin-sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px;
+  width: 34px;
+  height: 100%;
+  border: none;
+  background: var(--surface, #ffffff);
+  cursor: pointer;
+  color: var(--text-secondary, #605e5c);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+[data-theme='dark'] .plugin-sidebar-rail {
+  background: var(--surface, #252526);
+}
+
+.plugin-sidebar-rail:hover {
+  background: var(--hover, rgba(0, 0, 0, 0.04));
+  color: var(--text, #1e1e1e);
+}
+
+.plugin-sidebar-rail-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent, #c43e1c);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.plugin-sidebar-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+  color: var(--text-secondary, #605e5c);
+  user-select: none;
+  text-orientation: mixed;
+}
+
+.plugin-sidebar-rail:hover .plugin-sidebar-rail-label {
+  color: var(--text, #1e1e1e);
+}
+
+/* Panel body when open */
+.plugin-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  animation: plugin-fade-in 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes plugin-fade-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 47px height bar matching .ai-panel-header and Manuscriber standards */
+.plugin-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  height: 47px;
+  min-height: 47px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text, #1e1e1e);
+  flex-shrink: 0;
+  background: var(--surface, #ffffff);
+  box-sizing: border-box;
+}
+
+[data-theme='dark'] .plugin-sidebar-header {
+  border-bottom-color: var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--surface, #252526);
+  color: var(--text, #cccccc);
+}
+
+.plugin-sidebar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #1e1e1e);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .plugin-sidebar-title {
+  color: var(--text, #cccccc);
+}
+
+.plugin-sidebar-title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.plugin-sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.plugin-sidebar-custom-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.plugin-sidebar-header-separator {
+  width: 1px;
+  height: 16px;
+  background: var(--border, rgba(0, 0, 0, 0.1));
+  margin: 0 4px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.plugin-sidebar-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #605e5c);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.plugin-sidebar-close:hover {
+  background: var(--hover, rgba(0, 0, 0, 0.06));
+  color: var(--text, #1e1e1e);
+}
+
+.plugin-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #ffffff);
+  position: relative;
+  min-height: 0;
+  padding: 14px;
+}
+
+[data-theme='dark'] .plugin-sidebar-content {
+  background: var(--surface, #252526);
+}
+
+/* ── Plugin Ribbon Tab & Panel ───────────────────────────────── */
+
+.plugin-ribbon-tab {
+  /* Inherits .ribbon-tab rules from App styles */
+}
+
+.plugin-ribbon-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.plugin-ribbon-tab-label {
+  vertical-align: middle;
+}
+
+/* Display: contents lets child .ribbon-group sit seamlessly inside .ribbon-body without height clipping */
+.plugin-ribbon-panel {
+  display: contents;
+}
+
+/* ── Plugin Canvas View (Workbench Overlay) — Manuscriber Standard ── */
+
+.plugin-canvas-slot-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.plugin-canvas-view,
+.manuscriber-workbench-container,
+.plugin-workbench-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: auto;
+  background: var(--canvas, #f0f0f0);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 50;
+  animation: pluginFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='dark'] .plugin-canvas-view,
+[data-theme='dark'] .manuscriber-workbench-container,
+[data-theme='dark'] .plugin-workbench-container {
+  background: var(--canvas, #2b2b2b);
+}
+
+@keyframes pluginFadeIn {
+  from { opacity: 0; transform: scale(0.995); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 47px height workbench header matching Manuscriber & Genspark AI bar height */
+.plugin-workbench-header,
+.manuscriber-workbench-header {
+  height: 47px;
+  min-height: 47px;
+  background: var(--surface, #ffffff);
+  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  box-sizing: border-box;
+  z-index: 20;
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .plugin-workbench-header,
+[data-theme='dark'] .manuscriber-workbench-header {
+  background: var(--surface, #252526);
+  border-bottom-color: var(--border, rgba(255, 255, 255, 0.1));
+}
+
+.workbench-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-header-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border, rgba(0, 0, 0, 0.12));
+  margin: 0 4px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+[data-theme='dark'] .workbench-header-divider {
+  background: var(--border, rgba(255, 255, 255, 0.15));
+}
+
+.workbench-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #1e1e1e);
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .workbench-title {
+  color: var(--text, #ffffff);
+}
+
+.workbench-title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent, #c43e1c);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.workbench-file-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--accent-soft, rgba(196, 62, 28, 0.08));
+  color: var(--accent, #c43e1c);
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(196, 62, 28, 0.2));
+  font-weight: 500;
+  max-width: 220px;
+}
+
+.workbench-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-stats-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--hover, rgba(0, 0, 0, 0.04));
+  color: var(--text-secondary, #605e5c);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .workbench-stats-pill {
+  background: var(--hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-secondary, #999999);
+  border-color: var(--border, rgba(255, 255, 255, 0.1));
+}
+
+.workbench-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-workbench-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text-secondary, #605e5c);
+  cursor: pointer;
+  padding: 0;
+  transition: all 120ms ease;
+}
+
+[data-theme='dark'] .btn-workbench-icon {
+  color: var(--text-secondary, #aaaaaa);
+}
+
+.btn-workbench-icon:hover {
+  background: var(--hover, rgba(0, 0, 0, 0.06));
+  color: var(--text, #1e1e1e);
+}
+
+[data-theme='dark'] .btn-workbench-icon:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.08));
+  color: var(--text, #ffffff);
+}
+
+.btn-workbench-commit {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--accent, #c43e1c);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.btn-workbench-commit:hover {
+  opacity: 0.9;
+}
+
+/* ── Floating Overlay ────────────────────────────────────────── */
+
+.plugin-floating-portal {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: auto;
+  animation: pluginPopupFade 120ms ease-out;
+}
+
+@keyframes pluginPopupFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.plugin-floating-card {
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-theme='dark'] .plugin-floating-card {
+  background: var(--surface, #2d2d30);
+  border-color: var(--border, rgba(255, 255, 255, 0.15));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Modal Dialog Layer ──────────────────────────────────────── */
+
+.plugin-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pluginMaskFade 150ms ease-out;
+}
+
+@keyframes pluginMaskFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.plugin-modal-dialog {
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  max-width: 540px;
+  width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pluginModalPop 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='dark'] .plugin-modal-dialog {
+  background: var(--surface, #252526);
+  border-color: var(--border, rgba(255, 255, 255, 0.15));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes pluginModalPop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ── Status Bar Widget ───────────────────────────────────────── */
+
+.plugin-statusbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  height: 100%;
+  color: var(--text-secondary, #605e5c);
+  border-left: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+
+[data-theme='dark'] .plugin-statusbar-item {
+  color: var(--text-secondary, #999999);
+  border-left-color: var(--border, rgba(255, 255, 255, 0.08));
+}

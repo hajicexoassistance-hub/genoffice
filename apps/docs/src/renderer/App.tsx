@@ -399,6 +399,8 @@ import {
   singleInlineEditIndex,
   type FastPassBlock,
 } from './editor/pagination-fast-path'
+import { DocxPluginHost } from './plugins/DocxPluginHost'
+import './plugins/plugin-system.css'
 
 /** min gap between whole-document pagination passes while a phased open streams its tail */
 const STREAMING_PASS_GAP_MS = 1500
@@ -7102,6 +7104,30 @@ export function App() {
     tableGridlines ? 'show-table-gridlines' : '',
   ].join(' ')
 
+  const pluginDoc = useMemo(
+    () =>
+      doc
+        ? {
+            filePath: doc.filePath,
+            isDirty: dirtyRef.current,
+            isEmpty: wordCount === 0,
+            blocks: doc.parsed.blocks,
+            wordCount,
+          }
+        : null,
+    [doc, wordCount],
+  )
+
+  const pluginSelection = useMemo(() => {
+    if (!editor) {
+      return { empty: true, from: 0, to: 0, text: '', blockIndex: null }
+    }
+    const { from, to, empty } = editor.state.selection
+    const text = empty ? '' : editor.state.doc.textBetween(from, to, ' ')
+    const blockIndex = editor.state.selection.$from.index(0)
+    return { empty, from, to, text, blockIndex }
+  }, [editor?.state.selection])
+
   return (
     <div
       className={`app ${readMode ? 'read-mode' : ''}${revisionDisplay !== 'all' ? ` rev-display-${revisionDisplay}` : ''}${revisionDisplay === 'all' && viewMode === 'print' ? ' rev-balloon' : ''}`}
@@ -7280,6 +7306,7 @@ export function App() {
             )}
             {doc && <PasteOptionsChip editor={editor} />}
             <div className="editor-area">
+              <div id="plugin-canvas-slot" />
               <main
                 className={`editor-scroll${imageDragOver ? ' image-drop-target' : ''}${doc ? '' : ' start-screen-host'}`}
                 ref={scrollContainerRef}
@@ -7629,6 +7656,7 @@ export function App() {
               )}
               {!doc && t('appReady')}
               {status && <span className="status-msg"> — {status}</span>}
+              <div id="plugin-statusbar-slot" />
             </div>
             <div className="status-right">
               {doc && (
@@ -7696,6 +7724,7 @@ export function App() {
             </div>
           </footer>
         </div>
+        <div id="plugin-sidebar-slot" style={{ display: 'contents' }} />
       </div>
 
       {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
@@ -8081,6 +8110,14 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* ── Plugin System host & floating slot ────────────────────── */}
+      <div id="plugin-floating-slot" />
+      <DocxPluginHost
+        editor={editor}
+        doc={pluginDoc}
+        selection={pluginSelection}
+      />
     </div>
   )
 }

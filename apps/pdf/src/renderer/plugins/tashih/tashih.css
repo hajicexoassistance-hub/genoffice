@@ -1,0 +1,342 @@
+/**
+ * TASHIH-PRO: Stylesheet Berstandar Fluent UI & GenOffice Design Tokens
+ * 100% menggunakan CSS variables GenOffice (--surface, --surface-subtle, --text, --border, --hover, dll.)
+ * Mendukung tema Terang (Light) dan Gelap (Dark) secara otomatis dan konsisten.
+ */
+
+/* ─── Severity Badges (Fluent Style) ─── */
+.tashih-severity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-6, 4px);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+}
+
+.tashih-severity-badge.kritis {
+  background: var(--danger-bg, #3a2020);
+  color: var(--danger, #d13438);
+  border: 1px solid var(--danger-border, #5a3030);
+}
+
+.tashih-severity-badge.koreksi {
+  background: rgba(216, 59, 1, 0.12);
+  color: #d83b01;
+  border: 1px solid rgba(216, 59, 1, 0.28);
+}
+
+.tashih-severity-badge.sesuai {
+  background: var(--success-bg, #20342a);
+  color: var(--success, #52c082);
+  border: 1px solid var(--success-border, #33543f);
+}
+
+/* ─── Workspace Layout 3-Panel Responsif (Zero Black Void) ─── */
+.tashih-workspace-layout {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: calc(100vh - 47px);
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+.tashih-viewport-split {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tashih-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.tashih-panel.master-pane,
+.tashih-panel.scan-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+.tashih-panel.inspector-pane {
+  width: 380px;
+  flex-shrink: 0;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+@media (max-width: 1100px) {
+  .tashih-panel.inspector-pane {
+    width: 320px;
+  }
+}
+
+/* ─── Panel Header (Fluent Toolbar Style) ─── */
+.tashih-panel-header {
+  height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tashih-panel-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: var(--canvas);
+  padding: 20px;
+}
+
+/* ─── Multi-Vendor Tabs (Fluent Pivot Style) ─── */
+.tashih-vendor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.tashih-vendor-tab {
+  padding: 4px 10px;
+  border-radius: var(--radius-6, 4px);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.15s ease);
+  white-space: nowrap;
+}
+
+.tashih-vendor-tab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.tashih-vendor-tab.active {
+  background: var(--active-bg);
+  border-color: var(--border-strong);
+  color: var(--accent, #c43e1c);
+  font-weight: 600;
+}
+
+/* ─── Deskew & Onion-Skin Toolbar ─── */
+.tashih-calibration-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.tashih-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tashih-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  outline: none;
+}
+
+.tashih-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent, #c43e1c);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Bounding Box Overlays ─── */
+.tashih-bbox {
+  position: absolute;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-width 0.1s ease, box-shadow 0.15s ease;
+  z-index: 10;
+}
+
+.tashih-bbox.kritis {
+  border: 2px solid var(--danger, #d13438);
+  background: rgba(209, 52, 56, 0.16);
+}
+
+.tashih-bbox.koreksi {
+  border: 2px solid #d83b01;
+  background: rgba(216, 59, 1, 0.16);
+}
+
+.tashih-bbox.sesuai {
+  border: 2px solid var(--success, #52c082);
+  background: rgba(82, 192, 130, 0.16);
+}
+
+.tashih-bbox:hover,
+.tashih-bbox.selected {
+  box-shadow: 0 0 0 3px rgba(196, 62, 28, 0.45);
+  z-index: 20;
+}
+
+.tashih-bbox-tag {
+  position: absolute;
+  top: -18px;
+  left: 14px;
+  background: var(--accent, #c43e1c);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tashih-bbox-badge-number {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  z-index: 15;
+  pointer-events: none;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+}
+
+.tashih-bbox.kritis .tashih-bbox-badge-number {
+  background: var(--danger, #d13438);
+}
+
+.tashih-bbox.koreksi .tashih-bbox-badge-number {
+  background: #d83b01;
+}
+
+.tashih-bbox.sesuai .tashih-bbox-badge-number {
+  background: var(--success, #107c41);
+}
+
+/* ─── Mode Pan & Marker Cursors ─── */
+.canvas-mode-pan {
+  cursor: grab !important;
+  user-select: none;
+}
+.canvas-mode-pan:active {
+  cursor: grabbing !important;
+}
+
+.canvas-mode-marker {
+  cursor: crosshair !important;
+}
+
+
+/* ─── Inspector Cards ─── */
+.tashih-card {
+  padding: 12px;
+  border-radius: var(--radius-6, 6px);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all var(--transition-fast, 0.15s ease);
+}
+
+.tashih-card:hover {
+  border-color: var(--accent, #c43e1c);
+  background: var(--hover);
+}
+
+.tashih-card.selected {
+  border-color: var(--accent, #c43e1c);
+  box-shadow: 0 0 0 1px var(--accent, #c43e1c);
+  background: var(--surface-subtle);
+}
+
+.tashih-crop-preview {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: var(--radius-6, 4px);
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+/* ─── Fluent UI Modal & Print Report ─── */
+.tashih-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--color-bg-overlay, rgba(0, 0, 0, 0.6));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+
+.tashih-modal-dialog {
+  background: var(--surface);
+  border-radius: var(--radius-8, 8px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-modal-strong, 0 20px 25px rgba(0, 0, 0, 0.3));
+  color: var(--text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .tashih-print-report,
+  .tashih-print-report * {
+    visibility: visible;
+  }
+  .tashih-print-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

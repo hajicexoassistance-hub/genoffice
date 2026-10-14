@@ -580,6 +580,7 @@ type RibbonTab =
   | (typeof IMAGE_TABS)[number]
   | (typeof SHAPE_TABS)[number]
   | (typeof HF_TABS)[number]
+  | (string & {})
 
 const TABLE_PRESETS = [
   {
@@ -873,6 +874,26 @@ function RibbonInner({
       setDropdown(null)
     }
   }, [tabRequest])
+
+  // Coordinate with third-party plugin ribbon tabs
+  useEffect(() => {
+    const handlePluginTabRequest = (e: Event) => {
+      const ce = e as CustomEvent<{ tab: string }>
+      if (ce.detail?.tab) {
+        setTab(ce.detail.tab)
+        setDropdown(null)
+      }
+    }
+    window.addEventListener('genoffice:ribbon-request-tab', handlePluginTabRequest)
+    return () => window.removeEventListener('genoffice:ribbon-request-tab', handlePluginTabRequest)
+  }, [])
+
+  useEffect(() => {
+    if (!tab.startsWith('plugin:')) {
+      window.dispatchEvent(new CustomEvent('genoffice:ribbon-native-tab', { detail: { tab } }))
+    }
+  }, [tab])
+
 
   // Unified dismissal: a press anywhere outside the open panel closes it (plus
   // window blur / shell chrome presses). The [data-rb-panel] element exists in
@@ -2106,12 +2127,14 @@ function RibbonInner({
               {t(TAB_LABEL_KEYS[hfTab])}
             </button>
           ))}
+        <div id="plugin-ribbon-tab-slot" style={{ display: 'contents' }} />
         <span className="ribbon-tabs-spacer" />
         {trailingActions}
       </div>
 
       <div className="ribbon-body" data-ribbon-body="">
-        {tab === 'headerFooter' && hfEditing ? (
+        <div id="plugin-ribbon-panel-slot" style={{ display: 'contents' }} />
+        {tab.startsWith('plugin:') ? null : tab === 'headerFooter' && hfEditing ? (
           <HeaderFooterTab
             info={hfEditing}
             dropdown={dropdown}

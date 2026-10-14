@@ -54,6 +54,7 @@ import {
 import type { DesignField, FormDesignTool } from './FormDesignLayer'
 import { collectDetectInput, detectFormFields } from './form-detect'
 import { checkboxWidgetAt, markRectForBox, printedBoxAt } from './form-mark-target'
+import { PdfPluginHost } from './plugins/PdfPluginHost'
 
 type Arrange =
   | 'left'
@@ -360,7 +361,7 @@ const RIBBON_TABS = [
   { id: 'page', labelKey: 'ribbonTabPage' },
   { id: 'view', labelKey: 'ribbonTabView' },
 ] as const
-type RibbonTab = (typeof RIBBON_TABS)[number]['id'] | 'fillForm' | 'formDesign'
+type RibbonTab = (typeof RIBBON_TABS)[number]['id'] | 'fillForm' | 'formDesign' | (string & {})
 
 export default function App() {
   const { lang, t } = useI18n()
@@ -454,6 +455,40 @@ export default function App() {
   /** One-shot prompt pushed by the ribbon AI buttons; the panel auto-runs it (docs preset pattern) */
   const [aiPreset, setAiPreset] = useState<{ text: string; nonce: number } | null>(null)
   const [ribbonTab, setRibbonTab] = useState<RibbonTab>('home')
+  useEffect(() => {
+    const handlePluginTabReq = (e: Event) => {
+      const customEv = e as CustomEvent<{ tab: string }>
+      if (customEv.detail?.tab) setRibbonTab(customEv.detail.tab)
+    }
+    window.addEventListener('genoffice:pdf-ribbon-request-tab', handlePluginTabReq)
+    return () => window.removeEventListener('genoffice:pdf-ribbon-request-tab', handlePluginTabReq)
+  }, [])
+  useEffect(() => {
+    if (!ribbonTab.startsWith('plugin:')) {
+      window.dispatchEvent(new CustomEvent('genoffice:pdf-ribbon-native-tab', { detail: { tab: ribbonTab } }))
+    }
+  }, [ribbonTab])
+  const [pluginActiveFromHost, setPluginActiveFromHost] = useState(false)
+  const isPluginOpen = pluginActiveFromHost || ribbonTab.startsWith('plugin:')
+
+  // Saat plugin terbuka, tutup gambar mini ('thumbs') agar tampilan dokumen dan plugin lega
+  const prevSidebarBeforePluginRef = useRef<'thumbs' | 'outline' | null>(null)
+  const wasPluginOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (isPluginOpen && !wasPluginOpenRef.current) {
+      if (sidebar === 'thumbs') {
+        prevSidebarBeforePluginRef.current = 'thumbs'
+        setSidebar(null)
+      }
+    } else if (!isPluginOpen && wasPluginOpenRef.current) {
+      if (prevSidebarBeforePluginRef.current === 'thumbs' && sidebar === null) {
+        setSidebar('thumbs')
+      }
+      prevSidebarBeforePluginRef.current = null
+    }
+    wasPluginOpenRef.current = isPluginOpen
+  }, [isPluginOpen, sidebar])
   const [spread, setSpread] = useState<1 | 2>(1)
   const [nightMode, setNightMode] = useState(false)
   const [outline, setOutline] = useState<OutlineNode[] | null>(null)
@@ -7327,6 +7362,8 @@ export default function App() {
               {t('ribbonTabFormDesign')}
             </button>
           )}
+          {/* Plugin Ribbon Tab Slot */}
+          <div id="plugin-ribbon-tab-slot" style={{ display: 'contents' }} />
           <span className="ribbon-tabs-spacer" />
           {readOnly && <span className="tb-readonly">{t('roEncrypted')}</span>}
           {/* The file on disk is only touched by an explicit save until then. */}
@@ -7349,6 +7386,8 @@ export default function App() {
           )}
         </div>
         <div className="ribbon-body" data-ribbon-body="">
+          {/* Plugin Ribbon Panel Slot */}
+          <div id="plugin-ribbon-panel-slot" style={{ display: 'contents' }} />
           {ribbonTab === 'home' && (
             <>
               {/* ---- Genspark AI (first slot: entry + one-click AI actions, docs parity) ---- */}
@@ -8204,6 +8243,8 @@ export default function App() {
             </div>
           )}
           <div className="pdf-body">
+            {/* Plugin Canvas Overlay Slot (Workbench) */}
+            <div id="plugin-canvas-slot" className="plugin-canvas-slot-container" />
             {sidebar === 'outline' && outline && (
               <div className="pdf-thumbs pdf-outline-pane" style={{ width: sidebarW }}>
                 <div className="pdf-outline-header">
@@ -10595,6 +10636,8 @@ export default function App() {
               <span className="status-item">
                 {t('appPageOf', { current: currentPage, total: pageCount })}
               </span>
+              {/* Plugin Status Bar Slot */}
+              <div id="plugin-statusbar-slot" style={{ display: 'contents' }} />
             </div>
             <div className="status-right">
               <button
@@ -10626,7 +10669,26 @@ export default function App() {
             </div>
           </footer>
         </div>
+        {/* Plugin Sidebar Slot (Placed outside .app-content as flex sibling in .app-main, matching Manuscriber / Docs) */}
+        <div id="plugin-sidebar-slot" style={{ display: 'contents' }} />
       </div>
+
+      {/* ── PDF Plugin System Host ──────────────────────────────────── */}
+      <div id="plugin-floating-slot" />
+      <PdfPluginHost
+        doc={doc}
+        filePath={filePath}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        scale={scale}
+        isDirty={dirty}
+        isReadOnly={readOnly}
+        scrollToPage={scrollToPage}
+        setScale={(s) => applyScale(s, null)}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
+        onPluginOpenChange={setPluginActiveFromHost}
+      />
     </div>
   )
 }
