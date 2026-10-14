@@ -9,6 +9,7 @@ import {
   useRibbonCollapse,
   aiPanelInitiallyOpen,
   rememberAiPanelOpen,
+  useAiSidebarEnabled,
   type AiTokenUsageView,
 } from '@genoffice/ui'
 
@@ -416,6 +417,8 @@ export interface PageLayoutEcho {
   readonly printHeadings?: boolean | undefined
   readonly showGridlines: boolean
   readonly showHeadings: boolean
+  /// Mirrored grid (column A at the right edge) for the active sheet.
+  readonly rightToLeft: boolean
   readonly printArea?: string | null | undefined
   readonly printTitles?: string | null | undefined
   readonly header?: HeaderFooterParts | null | undefined
@@ -550,9 +553,14 @@ export function ExcelShell({
   const [isCopilotOpen, setIsCopilotOpen] = useState(() =>
     aiPanelInitiallyOpen('ai-sheets-show-ai'),
   )
+  // the sidebar switch is a soft hide; it closes the panel when it turns off
+  const aiSidebarEnabled = useAiSidebarEnabled(setIsCopilotOpen)
   useEffect(() => {
     rememberAiPanelOpen('ai-sheets-show-ai', isCopilotOpen)
   }, [isCopilotOpen])
+  // the "show the AI sidebar" setting off hides the copilot rail (soft hide):
+  // an explicit AI action (ribbon run, toggle) still opens the panel, and
+  // closing it returns to hidden — no dead affordances, no invisible runs
   const [showFormatCells, setShowFormatCells] = useState(false)
   const [axisSizeTarget, setAxisSizeTarget] = useState<'row' | 'col' | null>(null)
   const [showLinkDialog, setShowLinkDialog] = useState(false)
@@ -945,6 +953,7 @@ export function ExcelShell({
       <div className="sheet-body">
         <AiChatPanel
           isOpen={isCopilotOpen}
+          hideRail={!aiSidebarEnabled}
           hasContent={sheetHasContent}
           chat={chat}
           {...(historicChat !== undefined ? { historicChat } : {})}
@@ -3152,6 +3161,14 @@ function Ribbon({
             >
               <i className="check-box">{pageLayout.showHeadings ? '✓' : ''}</i>
               {t('appHeadings')}
+            </button>
+            <button
+              className="check-item"
+              data-tip={t('appRightToLeft')}
+              onClick={() => onCommand('toggle-right-to-left')}
+            >
+              <i className="check-box">{pageLayout.rightToLeft ? '✓' : ''}</i>
+              {t('appRightToLeft')}
             </button>
             <button
               className="check-item"
