@@ -47,6 +47,7 @@ export const StagingLineCard: React.FC<StagingLineCardProps> = ({
   const store = useManuscriberPluginStore()
   const speakingLineId = useManuscriberPluginStore((s) => s.speakingLineId)
   const speechStatus = useManuscriberPluginStore((s) => s.speechStatus)
+  const stagingFontSize = useManuscriberPluginStore((s) => s.stagingFontSize) || 16
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [copied, setCopied] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -452,7 +453,11 @@ export const StagingLineCard: React.FC<StagingLineCardProps> = ({
           ref={textareaRef}
           className={`line-card-textarea pegon-input-target ${isArabicOrPegon ? 'pegon-font script-arabic' : 'script-latin'}`}
           dir={isArabicOrPegon ? 'rtl' : 'ltr'}
-          style={{ textAlign: isArabicOrPegon ? 'right' : 'left' }}
+          style={{
+            textAlign: isArabicOrPegon ? 'right' : 'left',
+            fontSize: isArabicOrPegon ? `${Math.round(stagingFontSize * 1.18)}px` : `${stagingFontSize}px`,
+            lineHeight: isArabicOrPegon ? 1.8 : 1.55,
+          }}
           value={line.text}
           onChange={(e) => onUpdateText(line.id, e.target.value)}
           onKeyDown={handleTextareaKeyDown}
@@ -465,7 +470,11 @@ export const StagingLineCard: React.FC<StagingLineCardProps> = ({
         />
 
         {line.transliteration && (
-          <div className="line-card-transliteration" dir="ltr">
+          <div
+            className="line-card-transliteration"
+            dir="ltr"
+            style={{ fontSize: `${Math.max(11, Math.round(stagingFontSize * 0.85))}px` }}
+          >
             <span className="translit-label">Transliterasi:</span>
             <span className="translit-text">{line.transliteration}</span>
           </div>

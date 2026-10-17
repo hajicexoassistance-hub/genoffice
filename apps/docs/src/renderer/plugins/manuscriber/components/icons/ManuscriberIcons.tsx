@@ -365,4 +365,26 @@ export const IconStripHarakat: React.FC<IconProps> = ({ size = defaultProps.size
   </svg>
 )
 
+/* 🔤 Font Size Icon (AA) */
+export const IconFontSize: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M3 15.5 7 5.5l4 10M4.6 12h4.8M13 15.5 15.5 9l2.5 6.5M13.8 13.5h3.4" />
+  </svg>
+)
+
+/* 🔠 Text Size Increase Icon (A+) */
+export const IconTextIncrease: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M2.5 15 6.5 5 10.5 15M4 11.5h5M14 6v6M11 9h6" />
+  </svg>
+)
+
+/* 🔡 Text Size Decrease Icon (A-) */
+export const IconTextDecrease: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M2.5 15 6.5 5 10.5 15M4 11.5h5M12 9h5" />
+  </svg>
+)
+
+
 

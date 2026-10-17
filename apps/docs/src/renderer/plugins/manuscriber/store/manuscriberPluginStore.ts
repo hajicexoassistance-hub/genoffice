@@ -50,7 +50,9 @@ export interface ManuscriberPluginState {
   lines: StagingLine[]
   activeLineId: string | null
   isFocusMode: boolean
+  stagingFontSize: number
   scanSessions: ScanSession[]
+
 
   // ── Papan Ketik Pegon ───────────────────────────────────────────────────────
   isKeyboardVisible: boolean
@@ -93,6 +95,10 @@ export interface ManuscriberPluginState {
   markAllVerified: () => void
   setActiveLineId: (id: string | null, openFocus?: boolean) => void
   setIsFocusMode: (focus: boolean) => void
+  setStagingFontSize: (size: number) => void
+  increaseStagingFontSize: () => void
+  decreaseStagingFontSize: () => void
+  resetStagingFontSize: () => void
   setIsKeyboardVisible: (visible: boolean) => void
   setKeyboardOpen: (open: boolean) => void
   setKeyboardMode: (mode: KeyboardInputMode) => void
@@ -152,6 +158,21 @@ function createStore<T extends object>(
   return useStore
 }
 
+export const DEFAULT_STAGING_FONT_SIZE = 16
+
+const getInitialStagingFontSize = (): number => {
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem('manuscriber_staging_font_size')
+    if (saved) {
+      const parsed = parseInt(saved, 10)
+      if (!isNaN(parsed) && parsed >= 10 && parsed <= 36) {
+        return parsed
+      }
+    }
+  }
+  return DEFAULT_STAGING_FONT_SIZE
+}
+
 export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((set, get) => ({
   // Session defaults
   activeDocKey: null,
@@ -174,6 +195,7 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   lines: [],
   activeLineId: null,
   isFocusMode: false,
+  stagingFontSize: getInitialStagingFontSize(),
   scanSessions: [],
 
   isKeyboardVisible: false,
@@ -340,6 +362,35 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   },
 
   setIsFocusMode: (isFocusMode) => set({ isFocusMode }),
+  setStagingFontSize: (size) => {
+    const clamped = Math.max(10, Math.min(36, Math.round(size)))
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('manuscriber_staging_font_size', String(clamped))
+    }
+    set({ stagingFontSize: clamped })
+  },
+  increaseStagingFontSize: () => {
+    const cur = get().stagingFontSize || DEFAULT_STAGING_FONT_SIZE
+    const next = Math.min(36, cur + 1)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('manuscriber_staging_font_size', String(next))
+    }
+    set({ stagingFontSize: next })
+  },
+  decreaseStagingFontSize: () => {
+    const cur = get().stagingFontSize || DEFAULT_STAGING_FONT_SIZE
+    const next = Math.max(10, cur - 1)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('manuscriber_staging_font_size', String(next))
+    }
+    set({ stagingFontSize: next })
+  },
+  resetStagingFontSize: () => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('manuscriber_staging_font_size', String(DEFAULT_STAGING_FONT_SIZE))
+    }
+    set({ stagingFontSize: DEFAULT_STAGING_FONT_SIZE })
+  },
   setIsKeyboardVisible: (visible) => set({ isKeyboardVisible: visible, isKeyboardOpen: visible }),
   setKeyboardOpen: (open) => set({ isKeyboardVisible: open, isKeyboardOpen: open }),
   setKeyboardMode: (mode) => set({ keyboardMode: mode }),

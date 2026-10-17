@@ -2,6 +2,7 @@ import React from 'react'
 import type { DocxPluginContext } from '../../types'
 import { useManuscriberPluginStore } from '../store/manuscriberPluginStore'
 import { StagingPanel } from '../components/staging/StagingPanel'
+import { StagingFontSizeControl } from '../components/staging/StagingFontSizeControl'
 import {
   IconArrowLeft,
   IconManuscript,
@@ -62,7 +63,10 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
   }
 
   return (
-    <div className="manuscriber-workbench-container">
+    <div
+      className="manuscriber-workbench-container"
+      style={{ '--staging-font-size': `${store.stagingFontSize || 16}px` } as React.CSSProperties}
+    >
       {/* Clean Compact Ultra-Minimalist Workbench Header */}
       <div className="manuscriber-workbench-header">
         {/* Left: Navigation, Title & File Badge */}
@@ -117,6 +121,11 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
           >
             {store.isFocusMode ? <IconFocus size={15} /> : <IconList size={15} />}
           </button>
+
+          <span className="workbench-header-divider" />
+
+          {/* Stepper Pengubah Ukuran Huruf (Font Size) */}
+          <StagingFontSizeControl />
 
           <span className="workbench-header-divider" />
 
