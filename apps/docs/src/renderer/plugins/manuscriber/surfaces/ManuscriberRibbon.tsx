@@ -1,7 +1,11 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { DocxPluginContext } from '../../types'
 import { useManuscriberPluginStore } from '../store/manuscriberPluginStore'
+import { dictationService } from '../services/dictationService'
+import { loadPdfDocumentFromBuffer } from '../services/pdfService'
+import { deleteDocumentSession } from '../services/documentSessionStore'
 import {
+  IconManuscript,
   IconWorkbench,
   IconFolderOpen,
   IconSidebar,
@@ -9,6 +13,12 @@ import {
   IconBookOpen,
   IconSettings,
   IconApplyWord,
+  IconMic,
+  IconSparkles,
+  IconCopy,
+  IconCheck,
+  IconTrash,
+  IconDocument,
 } from '../components/icons/ManuscriberIcons'
 
 interface ManuscriberRibbonProps {
@@ -18,10 +28,72 @@ interface ManuscriberRibbonProps {
 
 export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context }) => {
   const store = useManuscriberPluginStore()
-  const { isKeyboardVisible, pdfFileName, lines } = store
+  const { isKeyboardVisible, pdfFileName, lines, activeLineId } = store
+  const [isDictating, setIsDictating] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    dictationService.onStateChange((listening) => {
+      setIsDictating(listening)
+    })
+
+    dictationService.onResult((transcript) => {
+      // Sisipkan hasil dikte langsung ke kursor Word aktif
+      if (transcript) {
+        context.actions.insertText(' ' + transcript.trim())
+        context.ui.showToast(`Dikte disisipkan: "${transcript.trim().slice(0, 30)}..."`, 'info')
+      }
+    })
+
+    dictationService.onError((err) => {
+      context.ui.showToast(`Dikte error: ${err?.message || err}`, 'error')
+      setIsDictating(false)
+    })
+  }, [context])
 
   const handleOpenWorkbench = () => {
     context.ui.openCanvasView()
+  }
+
+  const handleTriggerPickPdf = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      context.ui.showToast(`Memuat naskah "${file.name}"...`, 'info')
+      const buffer = await file.arrayBuffer()
+      store.setPdfFileName(file.name)
+      store.setPdfBytes(buffer)
+      const pdfDoc = await loadPdfDocumentFromBuffer(buffer)
+      store.setPdfDocument(pdfDoc)
+      store.setTotalPages(pdfDoc.numPages)
+      store.setCurrentPage(1)
+      context.ui.showToast(`Naskah "${file.name}" (${pdfDoc.numPages} hal) berhasil dimuat!`, 'success')
+    } catch (err: any) {
+      console.error('Failed to load PDF via ribbon:', err)
+      context.ui.showToast(`Gagal memuat PDF: ${err?.message || err}`, 'error')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
+  const handleClearDocumentSession = async () => {
+    if (!window.confirm('Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?')) {
+      return
+    }
+    if (store.activeDocKey) {
+      try {
+        await deleteDocumentSession(store.activeDocKey)
+      } catch (err) {
+        console.error('Failed to delete document session:', err)
+      }
+    }
+    store.resetProjectData()
+    context.ui.showToast('Kaitan naskah dokumen Word ini berhasil dihapus.', 'info')
   }
 
   const handleToggleKeyboard = () => {
@@ -30,6 +102,24 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
       isKeyboardVisible ? 'Keyboard Pegon ditutup' : 'Keyboard Pegon aktif',
       'info'
     )
+  }
+
+  const handleToggleDictation = () => {
+    const cfg = dictationService.getConfig()
+    if (isDictating) {
+      void dictationService.stop()
+      context.ui.showToast('Dikte suara dihentikan', 'info')
+    } else {
+      void dictationService
+        .start()
+        .then(() => {
+          const engineLabel = cfg.engine === 'groq-whisper' ? 'Groq Whisper Turbo' : 'Web Speech'
+          context.ui.showToast(`Mendengarkan suara (${engineLabel} - ${cfg.lang})... Silakan bicara!`, 'info')
+        })
+        .catch((err) => {
+          context.ui.showToast(`Gagal memulai dikte: ${err?.message || err}`, 'error')
+        })
+    }
   }
 
   const handleApplyToWord = () => {
@@ -50,63 +140,168 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
     context.ui.showToast(`${lines.length} baris berhasil disisipkan ke Word!`, 'success')
   }
 
+  const handleInsertActiveLine = () => {
+    if (lines.length === 0) {
+      context.ui.showToast('Belum ada baris naskah di staging.', 'info')
+      return
+    }
+    const target = lines.find((l) => l.id === activeLineId) || lines[0]
+    if (target && target.text.trim()) {
+      context.actions.insertHtml(
+        `<p style="direction: rtl; font-family: Amiri, Arial; font-size: 14pt; margin: 4px 0; line-height: 1.8;">${target.text.trim()}</p>`
+      )
+      context.ui.showToast('Baris aktif disisipkan ke Word', 'success')
+    } else {
+      context.ui.showToast('Baris yang dipilih tidak memiliki teks.', 'info')
+    }
+  }
+
+  const handleCopyAllText = () => {
+    if (lines.length === 0) {
+      context.ui.showToast('Tidak ada teks naskah untuk disalin.', 'info')
+      return
+    }
+    const allText = lines
+      .map((l) => l.text.trim())
+      .filter(Boolean)
+      .join('\n')
+
+    if (allText) {
+      void navigator.clipboard.writeText(allText)
+      context.ui.showToast(`${lines.length} baris naskah disalin ke clipboard!`, 'success')
+    }
+  }
+
+  const handleMarkAllVerified = () => {
+    if (lines.length === 0) {
+      context.ui.showToast('Belum ada baris naskah untuk diverifikasi.', 'info')
+      return
+    }
+    store.markAllVerified()
+    context.ui.showToast(`Semua (${lines.length}) baris naskah ditandai terverifikasi ✓`, 'success')
+  }
+
   return (
     <>
-      {/* Group: Workbench */}
+      {/* Hidden File Picker for Direct PDF Opening from Ribbon */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
+      {/* ── Group 1: Ruang Kerja & Naskah ────────────────────────────────────── */}
       <div className="ribbon-group">
         <div className="ribbon-group-items">
           <button
             type="button"
             className="rb-big"
             onClick={handleOpenWorkbench}
-            title="Buka Ruang Kerja Split-Pane Manuscriber (PDF + Staging + Keyboard)"
+            title="Buka Ruang Kerja Split-Pane Manuscriber (PDF + Staging + Tashih Layar Penuh)"
           >
             <span className="rb-big-icon">
-              <IconWorkbench size={22} />
+              <IconWorkbench size={22} color="var(--word-blue, #185abd)" />
             </span>
             <span>Buka Workbench</span>
           </button>
+
+          <div className="rb-col">
+            <button
+              type="button"
+              className="rb-small"
+              onClick={() => {
+                context.ui.expandSidebar()
+                context.ui.showToast('Panel samping Manuscriber dibuka', 'info')
+              }}
+              title="Buka Penampil Naskah di Panel Samping Dokumen Word"
+            >
+              <IconSidebar size={14} />
+              <span>Panel Samping</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              onClick={handleTriggerPickPdf}
+              title="Pilih Berkas PDF Naskah Baru dari Komputer"
+            >
+              <IconFolderOpen size={14} />
+              <span>{pdfFileName ? 'Ganti Naskah' : 'Buka PDF'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              disabled={!pdfFileName && lines.length === 0}
+              onClick={handleClearDocumentSession}
+              style={{ color: pdfFileName ? 'var(--danger, #dc3545)' : undefined }}
+              title="Hapus kaitan naskah & riwayat tashih dari dokumen Word ini"
+            >
+              <IconTrash size={14} />
+              <span>Hapus Naskah</span>
+            </button>
+          </div>
         </div>
-        <div className="ribbon-group-label">Ruang Kerja</div>
+        <div className="ribbon-group-label">Naskah</div>
       </div>
+
+
 
       <div className="ribbon-sep" />
 
-      {/* Group: Naskah & Proyek */}
+      {/* ── Group 3: AI Vision & Pemindaian ──────────────────────────────────── */}
       <div className="ribbon-group">
         <div className="ribbon-group-items">
           <button
             type="button"
             className="rb-big"
-            onClick={() => context.ui.openCanvasView()}
-            title="Buka berkas PDF atau proyek .manus"
-          >
-            <span className="rb-big-icon">
-              <IconFolderOpen size={22} />
-            </span>
-            <span>Buka Naskah</span>
-          </button>
-          <button
-            type="button"
-            className="rb-big"
             onClick={() => {
-              context.ui.expandSidebar()
-              context.ui.showToast('Panel samping Manuscriber dibuka', 'info')
+              context.ui.openCanvasView()
+              if (store.currentPage) {
+                context.ui.showToast(`Halaman ${store.currentPage} siap ditranskripsikan di Workbench`, 'info')
+              }
             }}
-            title="Buka Panel Samping Ringkas"
+            title="Transkripsi Halaman Naskah Aktif Menggunakan Vision AI"
           >
             <span className="rb-big-icon">
-              <IconSidebar size={22} />
+              <IconSparkles size={22} color="var(--word-blue, #185abd)" />
             </span>
-            <span>Panel Samping</span>
+            <span>Transkrip AI</span>
           </button>
+
+          <div className="rb-col">
+            <button
+              type="button"
+              className="rb-small"
+              onClick={() => context.ui.openModal('manuscriber-settings')}
+              title="Setelan Provider AI Vision (SumoPod, Groq, OpenRouter) & Prompt Kustom"
+            >
+              <IconSettings size={14} />
+              <span>Setelan AI</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              onClick={() => {
+                context.ui.openCanvasView()
+                context.ui.showToast('Pilih baris di Workbench untuk tashih bantuan AI', 'info')
+              }}
+              title="Buka Alat Tashih Ejaan & AI Harakat di Workbench"
+            >
+              <IconSparkles size={14} />
+              <span>Tashih Ejaan</span>
+            </button>
+          </div>
         </div>
-        <div className="ribbon-group-label">Naskah</div>
+        <div className="ribbon-group-label">AI Vision</div>
       </div>
 
       <div className="ribbon-sep" />
 
-      {/* Group: Aksara Pegon */}
+      {/* ── Group 3: Aksara & Pengetikan Pegon ─────────────────────────────────── */}
       <div className="ribbon-group">
         <div className="ribbon-group-items">
           <button
@@ -120,53 +315,97 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
             </span>
             <span>Keyboard Pegon</span>
           </button>
-          <button
-            type="button"
-            className="rb-big"
-            onClick={() => context.ui.openModal('manuscriber-guide')}
-            title="Buka Pedoman Aksara Pegon & Kaidah Vokal Alif"
-          >
-            <span className="rb-big-icon">
-              <IconBookOpen size={22} />
-            </span>
-            <span>Pedoman Pegon</span>
-          </button>
+
+          <div className="rb-col">
+            <button
+              type="button"
+              className={`rb-small ${isDictating ? 'active' : ''}`}
+              onClick={handleToggleDictation}
+              style={{
+                color: isDictating ? 'var(--danger, #dc3545)' : undefined,
+                fontWeight: isDictating ? 600 : undefined,
+              }}
+              title={
+                isDictating
+                  ? 'Sedang mendengarkan suara... Klik untuk berhenti'
+                  : 'Mulai Dikte Suara (Groq Whisper Turbo / Web Speech)'
+              }
+            >
+              <IconMic size={14} color={isDictating ? '#dc3545' : 'currentColor'} />
+              <span>{isDictating ? 'Merekam...' : 'Dikte Suara'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              onClick={() => context.ui.openModal('manuscriber-guide')}
+              title="Buka Pedoman Aksara Pegon & Kaidah Vokal Alif"
+            >
+              <IconBookOpen size={14} />
+              <span>Pedoman Pegon</span>
+            </button>
+          </div>
         </div>
-        <div className="ribbon-group-label">Aksara & Kaidah</div>
+        <div className="ribbon-group-label">Aksara & Suara</div>
       </div>
 
       <div className="ribbon-sep" />
 
-      {/* Group: AI Vision & Tashih */}
+      {/* ── Group 4: Integrasi Dokumen Word ──────────────────────────────────── */}
       <div className="ribbon-group">
         <div className="ribbon-group-items">
           <button
             type="button"
             className="rb-big"
-            onClick={() => context.ui.openModal('manuscriber-settings')}
-            title="Konfigurasi API AI Vision (SumoPod, KIE AI, OpenRouter)"
-          >
-            <span className="rb-big-icon">
-              <IconSettings size={22} />
-            </span>
-            <span>Setelan AI</span>
-          </button>
-          <button
-            type="button"
-            className="rb-big"
             onClick={handleApplyToWord}
-            title="Terapkan hasil tashih staging langsung ke dokumen Word"
+            disabled={lines.length === 0}
+            title="Sisipkan seluruh baris staging tashih ke dokumen Word (RTL Amiri 14pt)"
           >
             <span className="rb-big-icon">
-              <IconApplyWord size={22} />
+              <IconApplyWord size={22} color={lines.length > 0 ? 'var(--success, #10b981)' : undefined} />
             </span>
-            <span>Terapkan ke Word</span>
+            <span>Terapkan Word</span>
           </button>
+
+          <div className="rb-col">
+            <button
+              type="button"
+              className="rb-small"
+              onClick={handleInsertActiveLine}
+              disabled={lines.length === 0}
+              title="Sisipkan hanya baris yang sedang aktif / dipilih di staging ke Word"
+            >
+              <IconApplyWord size={14} />
+              <span>Sisipkan Baris</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              onClick={handleCopyAllText}
+              disabled={lines.length === 0}
+              title="Salin seluruh teks naskah hasil tashih ke clipboard komputer"
+            >
+              <IconCopy size={14} />
+              <span>Salin Teks</span>
+            </button>
+
+            <button
+              type="button"
+              className="rb-small"
+              onClick={handleMarkAllVerified}
+              disabled={lines.length === 0}
+              title="Tandai semua baris staging sebagai terverifikasi (verified ✓)"
+            >
+              <IconCheck size={14} />
+              <span>Verifikasi Semua</span>
+            </button>
+          </div>
         </div>
-        <div className="ribbon-group-label">AI & Integrasi</div>
+        <div className="ribbon-group-label">Integrasi Word</div>
       </div>
 
-      {/* Status Info (Optional Pill in ribbon) */}
+      {/* ── Group 5: Status Monitor Naskah Aktif ─────────────────────────────── */}
       {pdfFileName && (
         <>
           <div className="ribbon-sep" />
@@ -176,10 +415,11 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 2,
+                  gap: 3,
                   fontSize: 11,
                   color: 'var(--text-secondary)',
-                  maxWidth: 140,
+                  maxWidth: 155,
+                  lineHeight: 1.25,
                 }}
               >
                 <span
@@ -189,17 +429,33 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                     color: 'var(--text-primary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
-                  title={pdfFileName}
+                  title={`Naskah aktif: ${pdfFileName}`}
                 >
-                  📄 {pdfFileName}
+                  <IconDocument size={12} />
+                  <span>{pdfFileName}</span>
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                <span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>
                   {lines.length} baris di staging
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--success, #10b981)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                  }}
+                >
+                  <IconCheck size={10} />
+                  <span>Tersimpan di DB</span>
                 </span>
               </div>
             </div>
-            <div className="ribbon-group-label">Berkas Aktif</div>
+            <div className="ribbon-group-label">Naskah Tertaut</div>
           </div>
         </>
       )}

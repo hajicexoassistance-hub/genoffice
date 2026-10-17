@@ -74,12 +74,43 @@ export async function analyzeComparisonWithAi(
 ): Promise<VisionAiAnalysisResult> {
   const { masterImageBase64, scanImageBase64, domainPreset, pageNumber, vendorName, settings } = input
 
-  // Jika belum ada API key, berikan fallback heuristik lokal yang informatif
-  if (!settings.apiKey || settings.apiKey.trim() === '') {
+  let effectiveApiKey = settings.apiKey?.trim() || ''
+  let effectiveBaseUrl = (settings.baseUrl || 'https://ai.sumopod.com/v1').trim()
+  let effectiveModel = settings.modelName || 'gpt-4o'
+
+  // Jika belum ada API key lokal di plugin, ambil secara otomatis dari Pengaturan AI GenOffice (media.analysisProvider)
+  if (!effectiveApiKey) {
+    try {
+      const desktopApi = (window as any).desktop
+      const pdfApi = (window as any).pdfApi
+      const getSettingsFn = pdfApi?.getAiSettings || desktopApi?.getAiSettings
+      if (getSettingsFn) {
+        const aiSettings = await getSettingsFn()
+        const analysisProviderId = aiSettings?.media?.analysisProvider || 'genspark'
+        const provCfg = aiSettings?.media?.providers?.[analysisProviderId]
+        if (provCfg?.apiKey?.trim()) {
+          effectiveApiKey = provCfg.apiKey.trim()
+          if (provCfg.baseUrl?.trim()) effectiveBaseUrl = provCfg.baseUrl.trim()
+          if (provCfg.analysisModel?.trim()) effectiveModel = provCfg.analysisModel.trim()
+        } else if (aiSettings?.provider && aiSettings.providers?.[aiSettings.provider]?.apiKey?.trim()) {
+          // Fallback ke general provider jika ada
+          const mainProv = aiSettings.providers[aiSettings.provider]
+          effectiveApiKey = mainProv.apiKey.trim()
+          if (mainProv.baseUrl?.trim()) effectiveBaseUrl = mainProv.baseUrl.trim()
+          if (mainProv.model?.trim()) effectiveModel = mainProv.model.trim()
+        }
+      }
+    } catch (err) {
+      console.warn('[tashih-ai] Gagal membaca pengaturan AI GenOffice:', err)
+    }
+  }
+
+  // Jika tetap belum ada API key, berikan fallback heuristik lokal yang informatif
+  if (!effectiveApiKey) {
     return generateFallbackResult(domainPreset, pageNumber, vendorName)
   }
 
-  const endpoint = `${settings.baseUrl.replace(/\/+$/, '')}/chat/completions`
+  const endpoint = `${effectiveBaseUrl.replace(/\/+$/, '')}/chat/completions`
   const systemPrompt = SYSTEM_PROMPTS[domainPreset]
 
   const userPrompt = `Bandingkan potongan halaman ${pageNumber} dari Vendor "${vendorName}".
@@ -89,7 +120,7 @@ Lakukan verifikasi ketat dan kembalikan hanya objek JSON valid sesuai format yan
 
   try {
     const payload = {
-      model: settings.modelName || 'gpt-4o',
+      model: effectiveModel,
       temperature: settings.temperature ?? 0.2,
       response_format: { type: 'json_object' },
       messages: [
@@ -124,7 +155,7 @@ Lakukan verifikasi ketat dan kembalikan hanya objek JSON valid sesuai format yan
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey.trim()}`,
+        Authorization: `Bearer ${effectiveApiKey}`,
       },
       body: JSON.stringify(payload),
     })

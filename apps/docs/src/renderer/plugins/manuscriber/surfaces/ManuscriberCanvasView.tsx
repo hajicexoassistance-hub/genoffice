@@ -1,9 +1,7 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { DocxPluginContext } from '../../types'
 import { useManuscriberPluginStore } from '../store/manuscriberPluginStore'
 import { StagingPanel } from '../components/staging/StagingPanel'
-import { StagingHistoryDrawer } from '../components/staging/StagingHistoryDrawer'
-import { PegonKeyboardDock } from '../components/keyboard/PegonKeyboardDock'
 import {
   IconArrowLeft,
   IconManuscript,
@@ -12,10 +10,10 @@ import {
   IconSettings,
   IconBookOpen,
   IconApplyWord,
-  IconHistory,
   IconPlus,
   IconCheck,
   IconList,
+  IconFocus,
   IconTrash,
 } from '../components/icons/ManuscriberIcons'
 
@@ -30,12 +28,7 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
     isKeyboardVisible,
     pdfFileName,
     lines,
-    scanSessions,
-    restoreScanSession,
-    deleteScanSession,
   } = store
-
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 
   const verifiedCount = lines.filter((l) => l.status === 'verified').length
 
@@ -68,20 +61,11 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
     context.ui.showToast(`Berhasil menerapkan ${lines.length} baris ke Dokumen Word!`, 'success')
   }
 
-  const handleRestoreSession = (id: string) => {
-    restoreScanSession(id)
-    context.ui.showToast('Sesi pemindaian berhasil dipulihkan ke Staging', 'success')
-  }
-
-  const handleDeleteSession = (id: string) => {
-    deleteScanSession(id)
-    context.ui.showToast('Sesi pemindaian dihapus dari riwayat', 'info')
-  }
-
   return (
     <div className="manuscriber-workbench-container">
-      {/* Ultra-Compact Fluent Unified Workbench Header (Single 36px bar) */}
+      {/* Clean Compact Ultra-Minimalist Workbench Header */}
       <div className="manuscriber-workbench-header">
+        {/* Left: Navigation, Title & File Badge */}
         <div className="workbench-title-group">
           <button
             type="button"
@@ -99,26 +83,44 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
             <span className="workbench-title-icon" aria-hidden>
               <IconManuscript size={14} color="#ffffff" />
             </span>
-            <span>Staging Workbench</span>
+            <span>Staging</span>
           </span>
 
           {pdfFileName && (
-            <span className="workbench-file-badge" title={pdfFileName}>
+            <span className="workbench-file-badge" title={`Naskah Sumber: ${pdfFileName}`}>
               <IconDocument size={12} />
               <span className="workbench-file-name">{pdfFileName}</span>
             </span>
           )}
 
           <span
-            className="workbench-stats-pill"
+            className={`workbench-stats-pill ${verifiedCount === lines.length && lines.length > 0 ? 'all-verified' : ''}`}
             title={`${verifiedCount} dari ${lines.length} baris telah berstatus Shahih`}
           >
             {verifiedCount}/{lines.length} Shahih
           </span>
         </div>
 
+        {/* Right: Quick Tools (Icon-only, hover-to-know) & Word Commit */}
         <div className="workbench-actions-group">
-          {/* Quick Line Creation */}
+          {/* Dual-Mode Toggle Switcher (Saklar Mode Daftar / Fokus) */}
+          <button
+            type="button"
+            className={`btn-workbench-icon btn-mode-switch ${store.isFocusMode ? 'focus-active' : 'list-active'}`}
+            onClick={() => store.setIsFocusMode(!store.isFocusMode)}
+            title={
+              store.isFocusMode
+                ? 'Mode Fokus Aktif (Periksa baris satu per satu) — Klik untuk beralih ke Mode Daftar'
+                : 'Mode Daftar Aktif (Tampilkan seluruh baris) — Klik untuk beralih ke Mode Fokus'
+            }
+            aria-label={store.isFocusMode ? 'Mode Fokus' : 'Mode Daftar'}
+          >
+            {store.isFocusMode ? <IconFocus size={15} /> : <IconList size={15} />}
+          </button>
+
+          <span className="workbench-header-divider" />
+
+          {/* Quick Line Creation (Hover to know) */}
           <button
             type="button"
             className="btn-workbench-icon"
@@ -136,7 +138,7 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
             <IconPlus size={14} />
           </button>
 
-          {/* Mark All Verified */}
+          {/* Mark All Verified (Hover to know) */}
           <button
             type="button"
             className="btn-workbench-icon"
@@ -144,27 +146,16 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
               store.markAllVerified()
               context.ui.showToast('Semua baris ditandai Shahih ✓', 'success')
             }}
-            disabled={lines.length === 0}
+            disabled={lines.length === 0 || verifiedCount === lines.length}
             title="Tandai Semua Baris Shahih ✓"
             aria-label="Semua Shahih"
           >
             <IconCheck size={14} />
           </button>
 
-          {/* Toggle Focus Mode vs List Mode */}
-          <button
-            type="button"
-            className={`btn-workbench-icon ${store.isFocusMode ? 'active' : ''}`}
-            onClick={() => store.setIsFocusMode(!store.isFocusMode)}
-            title={store.isFocusMode ? 'Beralih ke Tampilan Seluruh Daftar' : 'Mode Fokus Satu Per Satu (Fokus Tashih)'}
-            aria-label="Mode Fokus"
-          >
-            <IconList size={14} />
-          </button>
-
           <span className="workbench-header-divider" />
 
-          {/* Virtual Pegon Keyboard Toggle */}
+          {/* Virtual Pegon Keyboard Toggle (Hover to know) */}
           <button
             type="button"
             className={`btn-workbench-icon ${isKeyboardVisible ? 'active' : ''}`}
@@ -172,32 +163,11 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
             title={isKeyboardVisible ? 'Sembunyikan Papan Ketik Pegon' : 'Tampilkan Papan Ketik Pegon 3-in-1'}
             aria-label="Keyboard Pegon"
           >
-            <IconKeyboard size={14} />
+            <IconKeyboard size={15} />
           </button>
 
-          {/* History Drawer Toggle */}
-          <button
-            type="button"
-            className={`btn-workbench-icon ${isHistoryOpen ? 'active' : ''}`}
-            onClick={() => setIsHistoryOpen((prev) => !prev)}
-            title={isHistoryOpen ? 'Tutup Riwayat Sesi' : `Riwayat Sesi Staging (${scanSessions.length})`}
-            aria-label="Riwayat Sesi"
-          >
-            <IconHistory size={14} />
-          </button>
 
-          {/* AI Settings Modal */}
-          <button
-            type="button"
-            className="btn-workbench-icon"
-            onClick={() => context.ui.openModal('manuscriber-settings')}
-            title="Pengaturan Model AI Vision & Prompt"
-            aria-label="Pengaturan AI"
-          >
-            <IconSettings size={14} />
-          </button>
-
-          {/* Pegon Guide Modal */}
+          {/* Pegon Guide Modal (Hover to know) */}
           <button
             type="button"
             className="btn-workbench-icon"
@@ -208,7 +178,18 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
             <IconBookOpen size={14} />
           </button>
 
-          {/* Clear Staging (Trash) */}
+          {/* AI Settings Modal (Hover to know) */}
+          <button
+            type="button"
+            className="btn-workbench-icon"
+            onClick={() => context.ui.openModal('manuscriber-settings')}
+            title="Pengaturan Model AI Vision & Prompt"
+            aria-label="Pengaturan AI"
+          >
+            <IconSettings size={14} />
+          </button>
+
+          {/* Clear Staging / Trash (Hover to know) */}
           <button
             type="button"
             className="btn-workbench-icon danger"
@@ -243,37 +224,35 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
         </div>
       </div>
 
-      {/* Main Staging & Tashih Workspace Body (100% Staging Focus) */}
-      <div className="workbench-staging-body">
-        <div className="workbench-staging-main">
-          {/* Top scrollable cards area */}
-          <div className="workbench-staging-cards-area">
-            <StagingPanel context={context} />
-          </div>
-
-          {/* Bottom Docked Pegon Virtual Keyboard (Exact match to Pegon Studio reference) */}
-          {isKeyboardVisible && (
-            <div className="workbench-keyboard-dock-wrapper">
-              <PegonKeyboardDock
-                onClose={() => store.setIsKeyboardVisible(false)}
-                onOpenGuide={() => context.ui.openModal('manuscriber-guide')}
-              />
+      {/* Main Dedicated Staging & Tashih Workspace */}
+      <div className="manuscriber-workbench-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+        <div
+          className="manuscriber-pane workbench-staging-fullscreen"
+          style={{
+            flex: 1,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--canvas, var(--surface-subtle))',
+            position: 'relative',
+          }}
+        >
+          <div className="workbench-staging-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {/* Top scrollable cards area */}
+            <div
+              className="workbench-staging-cards-area"
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                paddingBottom: 48,
+              }}
+            >
+              <StagingPanel context={context} />
             </div>
-          )}
-        </div>
-
-        {/* Right Slide Drawer: Staging History (Image 5) */}
-        {isHistoryOpen && (
-          <div className="workbench-history-wrapper">
-            <StagingHistoryDrawer
-              sessions={scanSessions}
-              onRestore={handleRestoreSession}
-              onDelete={handleDeleteSession}
-              onClose={() => setIsHistoryOpen(false)}
-            />
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
 }
+

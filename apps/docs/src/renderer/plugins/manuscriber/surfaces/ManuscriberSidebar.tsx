@@ -1,25 +1,23 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { DocxPluginContext } from '../../types'
 import { useManuscriberPluginStore } from '../store/manuscriberPluginStore'
+import { deleteDocumentSession } from '../services/documentSessionStore'
 import { PdfViewer } from '../components/pdf/PdfViewer'
 import {
-  IconManuscript,
   IconDocument,
   IconWorkbench,
   IconKeyboard,
   IconSettings,
+  IconHistory,
   IconCheck,
-  IconCircle,
-  IconPlus,
-  IconList,
-  IconApplyWord,
+  IconTrash,
 } from '../components/icons/ManuscriberIcons'
 
 interface ManuscriberSidebarProps {
   context: DocxPluginContext
 }
 
-type SidebarTab = 'pdf' | 'staging'
+type SidebarTab = 'pdf' | 'history'
 
 /**
  * Custom action buttons rendered in the main sidebar header (app bar)
@@ -35,8 +33,8 @@ export const ManuscriberSidebarHeaderActions: React.FC<{ context: DocxPluginCont
         type="button"
         className="ai-header-btn"
         onClick={() => context.ui.openCanvasView()}
-        title="Buka Workbench Penuh (Layar Penuh)"
-        aria-label="Buka Workbench Penuh"
+        title="Buka Workbench Pengeditan Naskah (Layar Penuh)"
+        aria-label="Buka Workbench Pengeditan"
       >
         <IconWorkbench size={14} />
       </button>
@@ -64,157 +62,274 @@ export const ManuscriberSidebarHeaderActions: React.FC<{ context: DocxPluginCont
 
 export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context }) => {
   const store = useManuscriberPluginStore()
-  const { lines } = store
+  const { scanSessions, restoreScanSession, deleteScanSession } = store
 
-  const [activeTab, setActiveTab] = useState<SidebarTab>('pdf')
-
-  const verifiedCount = lines.filter((l) => l.status === 'verified').length
+  const activeTab = store.sidebarActiveTab || 'pdf'
+  const setActiveTab = (tab: SidebarTab) => store.setSidebarActiveTab(tab)
 
   const handleOpenWorkbench = () => {
     context.ui.openCanvasView()
   }
 
-  const handleInsertLine = (text: string) => {
-    context.actions.insertText(text + '\n')
-    context.ui.showToast('Baris disisipkan ke dokumen', 'success')
+  const handleTranscriptionSuccess = (_pageNo: number, count: number) => {
+    // Otomatis buka Workbench di tengah saat transkripsi selesai
+    context.ui.openCanvasView()
+    context.ui.showToast(`Transkripsi selesai (${count} blok). Membuka Workbench Pengeditan...`, 'success')
   }
 
-  const handleToggleStatus = (id: string) => {
-    const target = lines.find((l) => l.id === id)
-    if (target) {
-      const nextStatus = target.status === 'verified' ? 'unverified' : 'verified'
-      store.updateLine(id, { status: nextStatus })
+  const handleRestoreSession = (id: string, pageNo: number) => {
+    restoreScanSession(id)
+    // Pindah tab ke penampil PDF
+    setActiveTab('pdf')
+    if (pageNo) {
+      store.setCurrentPage(pageNo)
     }
+    // Buka Workbench pengeditan di kanvas tengah
+    context.ui.openCanvasView()
+    context.ui.showToast(`Sesi Halaman ${pageNo} dipulihkan ke Workbench`, 'success')
   }
 
-  const handleInsertAll = () => {
-    if (lines.length === 0) return
-    let html = '<div style="direction: rtl; font-family: Amiri, Arial; font-size: 14pt;">'
-    lines.forEach((l) => {
-      if (l.text.trim()) {
-        html += `<p style="margin: 4px 0; line-height: 1.8;">${l.text.trim()}</p>`
-      }
-    })
-    html += '</div>'
-    context.actions.insertHtml(html)
-    context.ui.showToast(`Seluruh ${lines.length} baris disisipkan!`, 'success')
+  const handleDeleteSession = (id: string) => {
+    deleteScanSession(id)
+    context.ui.showToast('Sesi dihapus dari riwayat', 'info')
   }
+
+  const handleClearDocumentSession = async () => {
+    if (!window.confirm('Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?')) {
+      return
+    }
+    if (store.activeDocKey) {
+      try {
+        await deleteDocumentSession(store.activeDocKey)
+      } catch (err) {
+        console.error('Failed to delete document session:', err)
+      }
+    }
+    store.resetProjectData()
+    context.ui.showToast('Riwayat naskah dokumen ini berhasil dihapus.', 'info')
+  }
+
+  const tabSwitcher = (
+    <div className="sidebar-unified-tabs">
+      <button
+        type="button"
+        className={`sidebar-tab-btn ${activeTab === 'pdf' ? 'active' : ''}`}
+        onClick={() => setActiveTab('pdf')}
+        title="Tampilkan Penampil Naskah PDF Acuan"
+        aria-label="Tab Naskah PDF"
+      >
+        <IconDocument size={12} />
+        <span>Naskah PDF</span>
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+        onClick={() => setActiveTab('history')}
+        title={`Tampilkan Riwayat Transkripsi (${scanSessions.length} sesi)`}
+        aria-label="Tab Riwayat Transkripsi"
+      >
+        <IconHistory size={12} />
+        <span>Riwayat</span>
+        {scanSessions.length > 0 && <span className="sidebar-tab-badge">{scanSessions.length}</span>}
+      </button>
+    </div>
+  )
 
   return (
     <div className="manuscriber-sidebar-panel">
-      {/* Segmented Switcher Tabs (Directly under the single appbar) */}
-      <div className="sidebar-segmented-tabs">
-        <button
-          type="button"
-          className={`sidebar-tab-btn ${activeTab === 'pdf' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pdf')}
-          title="Tampilkan Penampil Naskah PDF"
-          aria-label="Tab Naskah PDF"
+      {/* Linked Document Session Strip */}
+      {store.pdfFileName ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '5px 10px',
+            background: 'var(--surface-active, rgba(0,0,0,0.03))',
+            borderBottom: '1px solid var(--border)',
+            fontSize: '11px',
+          }}
         >
-          <IconDocument size={13} />
-          <span>Naskah PDF</span>
-        </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+            <span style={{ color: 'var(--success, #10b981)', fontSize: '10px' }}>●</span>
+            <span
+              style={{
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 160,
+              }}
+              title={`Naskah tertaut: ${store.pdfFileName}`}
+            >
+              {store.pdfFileName}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '10.5px' }}>
+              ({store.lines.length} baris)
+            </span>
+          </div>
 
-        <button
-          type="button"
-          className={`sidebar-tab-btn ${activeTab === 'staging' ? 'active' : ''}`}
-          onClick={() => setActiveTab('staging')}
-          title={`Tampilkan Baris Staging (${lines.length} baris)`}
-          aria-label="Tab Baris Staging"
+          <button
+            type="button"
+            onClick={handleClearDocumentSession}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--danger, #dc3545)',
+              fontSize: '10.5px',
+              cursor: 'pointer',
+              padding: '2px 4px',
+              borderRadius: '3px',
+            }}
+            title="Hapus keterikatan naskah dan riwayat untuk dokumen Word ini"
+          >
+            Hapus Naskah
+          </button>
+        </div>
+      ) : store.isRestoringSession ? (
+        <div
+          style={{
+            padding: '6px 12px',
+            background: 'var(--surface-active, rgba(0,0,0,0.03))',
+            borderBottom: '1px solid var(--border)',
+            fontSize: '11px',
+            color: 'var(--text-secondary)',
+          }}
         >
-          <IconList size={13} />
-          <span>Baris Staging</span>
-          {lines.length > 0 && <span className="sidebar-tab-badge">{lines.length}</span>}
-        </button>
-      </div>
+          Memulihkan naskah tertaut...
+        </div>
+      ) : null}
+
+      {/* Jika tab Riwayat aktif, tampilkan single bar terpadu */}
+      {activeTab === 'history' && (
+        <div className="sidebar-unified-topbar">
+          {tabSwitcher}
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            {scanSessions.length} Sesi
+          </span>
+        </div>
+      )}
 
       {/* Main Tab Surface */}
       <div className="sidebar-tab-body">
         {activeTab === 'pdf' ? (
           <div className="sidebar-pdf-wrapper">
-            <PdfViewer context={context} compact={true} onOpenWorkbench={handleOpenWorkbench} />
+            <PdfViewer
+              context={context}
+              compact={true}
+              headerPrefix={tabSwitcher}
+              onTranscriptionSuccess={handleTranscriptionSuccess}
+            />
           </div>
         ) : (
-          <div className="sidebar-staging-wrapper">
-            {/* Staging Summary Header */}
-            <div className="sidebar-staging-header">
-              <div className="staging-header-status">
-                <span className="staging-status-pill" title={`${verifiedCount} dari ${lines.length} baris shahih`}>
-                  {verifiedCount}/{lines.length} Shahih
-                </span>
-              </div>
-              <div className="staging-header-actions">
-                {lines.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn-sidebar-action-icon primary"
-                    onClick={handleInsertAll}
-                    title="Sisipkan Semua Baris ke Dokumen Word"
-                    aria-label="Sisipkan Semua Baris ke Word"
-                  >
-                    <IconApplyWord size={14} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn-sidebar-action-icon"
-                  onClick={handleOpenWorkbench}
-                  title="Buka Ruang Kerja Workbench untuk Tashih Penuh"
-                  aria-label="Buka Workbench"
-                >
-                  <IconWorkbench size={14} />
-                </button>
-              </div>
+          <div className="sidebar-history-wrapper" style={{ padding: '12px', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+            {/* History Summary Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {scanSessions.length} Sesi Pemindaian
+              </span>
+              <button
+                type="button"
+                className="btn-pdf-tool"
+                onClick={handleOpenWorkbench}
+                style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                title="Buka Workbench Staging & Tashih Layar Penuh"
+              >
+                <IconWorkbench size={12} />
+                <span>Buka Workbench</span>
+              </button>
             </div>
 
-            {/* Lines List */}
-            <div className="sidebar-lines-scroll">
-              {lines.length === 0 ? (
-                <div className="sidebar-empty-staging">
-                  <div className="empty-icon" style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-                    <IconManuscript size={36} color="var(--text-tertiary, #909499)" />
-                  </div>
-                  <p>Belum ada baris naskah.</p>
-                  <p className="subtext">
-                    Buka tab <strong>Naskah PDF</strong> untuk memuat naskah atau lakukan Transkripsi AI.
-                  </p>
+            {/* Sessions List */}
+            {scanSessions.length === 0 ? (
+              <div className="sidebar-empty-staging" style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, opacity: 0.6 }}>
+                  <IconHistory size={36} />
                 </div>
-              ) : (
-                lines.map((line, idx) => (
-                  <div key={line.id} className="sidebar-line-card">
-                    <div className="sidebar-line-card-header">
-                      <span className="sidebar-line-num">#{idx + 1}</span>
-                      <div className="sidebar-line-header-right">
-                        <button
-                          type="button"
-                          className={`btn-sidebar-status-icon ${line.status}`}
-                          onClick={() => handleToggleStatus(line.id)}
-                          title={line.status === 'verified' ? 'Status: Shahih ✓ (Klik untuk ubah)' : 'Status: Belum Tashih (Klik untuk verifikasi)'}
-                          aria-label="Toggle status"
-                        >
-                          {line.status === 'verified' ? <IconCheck size={11} /> : <IconCircle size={10} />}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-sidebar-insert-icon"
-                          onClick={() => handleInsertLine(line.text)}
-                          title="Sisipkan baris ini ke kursor dokumen Word"
-                          aria-label="Sisipkan Baris"
-                        >
-                          <IconPlus size={12} />
-                        </button>
-                      </div>
+                <p style={{ fontWeight: 600, fontSize: '13px', margin: '0 0 4px' }}>Belum Ada Riwayat Transkripsi</p>
+                <p style={{ fontSize: '11.5px', margin: 0, opacity: 0.85, lineHeight: 1.5 }}>
+                  Buka tab <strong>Naskah PDF</strong> lalu klik tombol <strong>Transkripsi</strong> pada halaman naskah fisik Anda.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {scanSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
+                        Halaman {session.pageNo}
+                      </span>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                        {session.timestamp}
+                      </span>
                     </div>
-                    <div className="sidebar-line-text pegon-font" dir="rtl">
-                      {line.text}
+
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{session.blockCount} blok teks naskah</span>
+                      <span>•</span>
+                      <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        <IconCheck size={11} />
+                        <span>Tersimpan</span>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreSession(session.id, session.pageNo)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: 'var(--accent, #c43e1c)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Pulihkan ke Workbench
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSession(session.id)}
+                        title="Hapus sesi ini dari riwayat"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          background: 'transparent',
+                          color: 'var(--danger, #dc3545)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <IconTrash size={12} />
+                      </button>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   )
 }
+

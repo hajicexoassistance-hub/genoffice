@@ -120,8 +120,7 @@ export function AiAskPopover({
 
   const anchorRect = useCallback((): AnchorRect | null => {
     const state = openRef.current
-    if (!state) return null
-    if (state.mode === 'edit') {
+    if (state?.mode === 'edit') {
       const range = queueAnchorRange(editor.state, state.qid)
       return range ? rangeRect(editor, range.from, range.to) : null
     }
@@ -395,22 +394,36 @@ export function AiAskPopover({
   return (
     <>
       {trigger && !open && (
-        <button
-          ref={triggerRef}
-          className="ai-ask-trigger"
-          style={{ left: trigger.left, top: trigger.top }}
-          // keep the editor focused and the selection alive
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={openFromSelection}
+        <div
+          className="ai-ask-trigger-group"
+          style={{
+            position: 'fixed',
+            left: trigger.left,
+            top: trigger.top,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            zIndex: 59,
+          }}
         >
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
-            <path
-              d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
-              fill="currentColor"
-            />
-          </svg>
-          {t('aiAskBtn')}
-        </button>
+          <button
+            ref={triggerRef}
+            className="ai-ask-trigger"
+            style={{ position: 'relative', left: 'auto', top: 'auto', zIndex: 'auto' }}
+            // keep the editor focused and the selection alive
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openFromSelection}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
+              <path
+                d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3zM19 15l.85 2.3L22 18.15l-2.15.85L19 21.3l-.85-2.3-2.15-.85 2.15-.85L19 15z"
+                fill="currentColor"
+              />
+            </svg>
+            {t('aiAskBtn')}
+          </button>
+          <div id="ai-ask-actions-slot" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} />
+        </div>
       )}
       {box}
     </>

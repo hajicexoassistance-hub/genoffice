@@ -227,14 +227,27 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
               if (!line.bbox) return null
               const isSelected = line.id === activeLineId
 
-              const [ymin, xmin, ymax, xmax] = Array.isArray(line.bbox)
-                ? line.bbox
-                : [line.bbox.ymin, line.bbox.xmin, line.bbox.ymax, line.bbox.xmax]
-
-              const top = (ymin / 1000) * scaledHeight
-              const left = (xmin / 1000) * scaledWidth
-              const width = Math.max(12, ((xmax - xmin) / 1000) * scaledWidth)
-              const height = Math.max(10, ((ymax - ymin) / 1000) * scaledHeight)
+              let top = 0, left = 0, width = 0, height = 0
+              if (line.box_2d && Array.isArray(line.box_2d) && line.box_2d.length === 4) {
+                const [ymin, xmin, ymax, xmax] = line.box_2d
+                top = (ymin / 1000) * scaledHeight
+                left = (xmin / 1000) * scaledWidth
+                width = Math.max(12, ((xmax - xmin) / 1000) * scaledWidth)
+                height = Math.max(10, ((ymax - ymin) / 1000) * scaledHeight)
+              } else if (Array.isArray(line.bbox) && line.bbox.length === 4) {
+                const [b0, b1, b2, b3] = line.bbox
+                if (b0 > 100 || b1 > 100 || b2 > 100 || b3 > 100) {
+                  top = (b0 / 1000) * scaledHeight
+                  left = (b1 / 1000) * scaledWidth
+                  width = Math.max(12, ((b3 - b1) / 1000) * scaledWidth)
+                  height = Math.max(10, ((b2 - b0) / 1000) * scaledHeight)
+                } else {
+                  left = (b0 / 100) * scaledWidth
+                  top = (b1 / 100) * scaledHeight
+                  width = Math.max(12, (b2 / 100) * scaledWidth)
+                  height = Math.max(10, (b3 / 100) * scaledHeight)
+                }
+              }
               const typeLabel = (line.type || 'TEKS').toUpperCase()
 
               return (
@@ -251,11 +264,9 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
                   onClick={() => onSelectLine(line.id)}
                   title={`Klik untuk fokus baris: "${line.text.slice(0, 40)}..."`}
                 >
-                  {isSelected && (
-                    <span className="spotlight-tag-badge">
-                      {typeLabel}
-                    </span>
-                  )}
+                  <span className="spotlight-tag-badge">
+                    {typeLabel} #{pageLines.indexOf(line) + 1}
+                  </span>
                 </div>
               )
             })}

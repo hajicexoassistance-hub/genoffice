@@ -103,6 +103,7 @@ export function MyComponent({ context }: { context: DocxPluginContext }) {
   // Operasi Dokumen:
   actions.insertText('Teks baru')
   actions.replaceSelection('Ganti seleksi')
+  actions.insertParagraphAfterSelection('Paragraf baru di bawah seleksi')
   actions.insertHtml('<p>Paragraf</p>')
 
   // Kontrol UI:

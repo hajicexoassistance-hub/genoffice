@@ -185,6 +185,15 @@ export const IconList: React.FC<IconProps> = ({ size = defaultProps.size, classN
   </svg>
 )
 
+/* 🎯 Focus / Single Item Mode Icon */
+export const IconFocus: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <circle cx="10" cy="10" r="3" />
+    <path d="M10 2.5v2.5M10 15v2.5M2.5 10H5M15 10h2.5" />
+    <path d="M4 4.5A7.5 7.5 0 0 1 16 4.5M16 15.5A7.5 7.5 0 0 1 4 15.5" />
+  </svg>
+)
+
 /* ◀ Chevron Left */
 export const IconChevronLeft: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
@@ -220,11 +229,34 @@ export const IconArrowLeft: React.FC<IconProps> = ({ size = defaultProps.size, c
   </svg>
 )
 
-/* 🔊 Sound Speaker On */
+/* 🔊 Sound Speaker On / Volume */
 export const IconSoundOn: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
     <path d="M3.5 8h3l4-3.5v11l-4-3.5h-3a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z" />
     <path d="M14 7a4 4 0 0 1 0 6M16.5 4.5a7 7 0 0 1 0 11" />
+  </svg>
+)
+export const IconVolume = IconSoundOn
+
+/* ▶ Play Icon */
+export const IconPlay: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill={color} stroke="none" className={className} aria-hidden>
+    <path d="M6 4.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 6 4.5Z" />
+  </svg>
+)
+
+/* ⏸ Pause Icon */
+export const IconPause: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill={color} stroke="none" className={className} aria-hidden>
+    <rect x="5.5" y="4" width="3.5" height="12" rx="1" />
+    <rect x="11" y="4" width="3.5" height="12" rx="1" />
+  </svg>
+)
+
+/* ⏹ Stop Icon */
+export const IconStop: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill={color} stroke="none" className={className} aria-hidden>
+    <rect x="5" y="5" width="10" height="10" rx="1.5" />
   </svg>
 )
 
@@ -316,4 +348,21 @@ export const IconInfo: React.FC<IconProps> = ({ size = defaultProps.size, classN
     <path d="M10 9v5M10 6.5h.01" />
   </svg>
 )
+
+/* ➖ Minus / Minimize Icon */
+export const IconMinus: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" className={className} aria-hidden>
+    <path d="M4 10h12" />
+  </svg>
+)
+
+/* ◌ْ✕ Strip / Remove Harakat Icon (Programatik Instant) */
+export const IconStripHarakat: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M11 4v12" strokeWidth={1.75} />
+    <path d="M7 6c0-1.5 1.5-2.5 3-2.5" strokeWidth={1.4} />
+    <path d="M4.5 15.5L15.5 4.5" stroke="var(--danger, #ef4444)" strokeWidth={1.75} />
+  </svg>
+)
+
 

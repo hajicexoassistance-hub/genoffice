@@ -12,7 +12,11 @@ import type {
   LineStatus,
   KeyboardInputMode,
   VisionProviderConfig,
+  SpeechStatus,
+  SpeechLanguage,
 } from '../types'
+import { getVisionConfig, saveVisionConfig } from '../services/visionService'
+import type { ManuscriberDocumentSession } from '../services/documentSessionStore'
 
 export interface ScanSession {
   id: string
@@ -24,6 +28,11 @@ export interface ScanSession {
 }
 
 export interface ManuscriberPluginState {
+  // ── Dokumen DOCX & Session Binding ──────────────────────────────────────────
+  activeDocKey: string | null
+  isRestoringSession: boolean
+  lastSavedTimestamp: string | null
+
   // ── Dokumen PDF ─────────────────────────────────────────────────────────────
   pdfFileName: string
   pdfName: string
@@ -49,10 +58,18 @@ export interface ManuscriberPluginState {
   keyboardMode: KeyboardInputMode
   activeInputElement: HTMLElement | null
 
+  // ── Narator / TTS ─────────────────────────────────────────────────────────
+  speakingLineId: string | null
+  speechStatus: SpeechStatus
+
   // ── Konfigurasi AI Vision ───────────────────────────────────────────────────
   visionConfig: VisionProviderConfig
 
+  // ── Tab Navigasi Sidebar ────────────────────────────────────────────────────
+  sidebarActiveTab: 'pdf' | 'history'
+
   // ── Actions ─────────────────────────────────────────────────────────────────
+  setSidebarActiveTab: (tab: 'pdf' | 'history') => void
   setPdfFileName: (name: string) => void
   setPdfBytes: (bytes: ArrayBuffer | null) => void
   setPdfDocument: (doc: any) => void
@@ -81,8 +98,14 @@ export interface ManuscriberPluginState {
   setKeyboardMode: (mode: KeyboardInputMode) => void
   setActiveInput: (el: HTMLElement | null) => void
   setVisionConfig: (config: VisionProviderConfig) => void
+  setSpeakingState: (lineId: string | null, status: SpeechStatus) => void
   prevPointer: () => void
   nextPointer: () => void
+  setActiveDocKey: (key: string | null) => void
+  setIsRestoringSession: (loading: boolean) => void
+  setLastSavedTimestamp: (ts: string | null) => void
+  loadFromSession: (session: ManuscriberDocumentSession, pdfDoc?: any) => void
+  resetProjectData: () => void
   clear: () => void
 }
 
@@ -130,6 +153,11 @@ function createStore<T extends object>(
 }
 
 export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((set, get) => ({
+  // Session defaults
+  activeDocKey: null,
+  isRestoringSession: false,
+  lastSavedTimestamp: null,
+
   // Defaults
   pdfFileName: '',
   pdfName: '',
@@ -153,14 +181,13 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   keyboardMode: 'pegon',
   activeInputElement: null,
 
-  visionConfig: {
-    provider: 'sumopod',
-    baseUrl: 'https://ai.sumopod.com/v1',
-    apiKey: '',
-    model: 'google/gemini-2.5-flash',
-    temperature: 0.1,
-    promptPreset: 'matanSyarah',
-  },
+  speakingLineId: null,
+  speechStatus: 'idle' as SpeechStatus,
+
+  visionConfig: getVisionConfig(),
+
+  sidebarActiveTab: 'pdf',
+  setSidebarActiveTab: (tab) => set({ sidebarActiveTab: tab }),
 
   setPdfFileName: (name) => set({ pdfFileName: name, pdfName: name }),
   setPdfBytes: (bytes) => set({ pdfBytes: bytes, pdfBuffer: bytes }),
@@ -317,7 +344,14 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   setKeyboardOpen: (open) => set({ isKeyboardVisible: open, isKeyboardOpen: open }),
   setKeyboardMode: (mode) => set({ keyboardMode: mode }),
   setActiveInput: (el) => set({ activeInputElement: el }),
-  setVisionConfig: (config) => set({ visionConfig: config }),
+  setVisionConfig: (config) => {
+    saveVisionConfig(config)
+    set({ visionConfig: config })
+  },
+
+  setSpeakingState: (lineId, status) => {
+    set({ speakingLineId: lineId, speechStatus: status })
+  },
 
   prevPointer: () => {
     const { lines, activeLineId } = get()
@@ -335,8 +369,61 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
     }
   },
 
+  setActiveDocKey: (key) => set({ activeDocKey: key }),
+  setIsRestoringSession: (loading) => set({ isRestoringSession: loading }),
+  setLastSavedTimestamp: (ts) => set({ lastSavedTimestamp: ts }),
+
+  loadFromSession: (session, pdfDoc) => {
+    const pagesMeta = session.pagesMeta || {}
+    const pageStatuses: Record<number, PageTranscriptionStatus> = {}
+    Object.entries(pagesMeta).forEach(([p, meta]) => {
+      pageStatuses[Number(p)] = meta.status
+    })
+
+    set({
+      activeDocKey: session.docKey,
+      pdfFileName: session.pdfFileName,
+      pdfName: session.pdfFileName,
+      pdfBytes: session.pdfBytes || null,
+      pdfBuffer: session.pdfBytes || null,
+      pdfDocument: pdfDoc || null,
+      currentPage: session.currentPage || 1,
+      totalPages: pdfDoc?.numPages || 1,
+      zoomScale: session.zoomScale || 1.0,
+      zoom: session.zoomScale || 1.0,
+      lines: session.lines || [],
+      pagesMeta,
+      pageStatuses,
+      scanSessions: session.scanSessions || [],
+      lastSavedTimestamp: session.updatedAt,
+      isRestoringSession: false,
+    })
+  },
+
+  resetProjectData: () => {
+    set({
+      pdfFileName: '',
+      pdfName: '',
+      pdfBytes: null,
+      pdfBuffer: null,
+      pdfDocument: null,
+      currentPage: 1,
+      totalPages: 1,
+      lines: [],
+      pagesMeta: {},
+      pageStatuses: {},
+      scanSessions: [],
+      activeLineId: null,
+      isFocusMode: false,
+      lastSavedTimestamp: null,
+    })
+  },
+
   clear: () => {
     set({
+      activeDocKey: null,
+      isRestoringSession: false,
+      lastSavedTimestamp: null,
       pdfFileName: '',
       pdfName: '',
       pdfBytes: null,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo, createContext, useContext } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/core'
@@ -72,7 +72,38 @@ export interface DocxPluginHostProps {
  *   ...
  *   <DocxPluginHost editor={editor} doc={doc} selection={activeSelection} />
  */
-export function DocxPluginHost({ editor, doc, selection }: DocxPluginHostProps) {
+export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPluginHostProps) {
+  // ── Reactive selection state directly tracking TipTap editor events ────────
+  const [liveSelection, setLiveSelection] = useState<PluginSelection>(() => {
+    if (propSelection && !propSelection.empty) return propSelection
+    if (!editor) return { empty: true, from: 0, to: 0, text: '', blockIndex: null }
+    const { from, to, empty } = editor.state.selection
+    const text = empty ? '' : editor.state.doc.textBetween(from, to, ' ')
+    const blockIndex = editor.state.selection.$from.index(0)
+    return { empty, from, to, text, blockIndex }
+  })
+
+  useEffect(() => {
+    if (!editor) return
+    const update = () => {
+      const { from, to, empty } = editor.state.selection
+      const text = empty ? '' : editor.state.doc.textBetween(from, to, ' ')
+      const blockIndex = editor.state.selection.$from.index(0)
+      setLiveSelection({ empty, from, to, text, blockIndex })
+    }
+    editor.on('selectionUpdate', update)
+    editor.on('transaction', update)
+    editor.on('focus', update)
+    editor.on('blur', update)
+    update()
+    return () => {
+      editor.off('selectionUpdate', update)
+      editor.off('transaction', update)
+      editor.off('focus', update)
+      editor.off('blur', update)
+    }
+  }, [editor])
+
   // ── Runtime state per-plugin (sidebar open, active modal, etc.) ────────────
   const [runtimeStates, setRuntimeStates] = useState<PluginRuntimeState[]>(() =>
     REGISTERED_PLUGINS.map((manifest) => ({
@@ -113,7 +144,7 @@ export function DocxPluginHost({ editor, doc, selection }: DocxPluginHostProps) 
           }
         : null
 
-      const selState = selection
+      const selState = liveSelection
 
       return {
         editor,
@@ -137,6 +168,25 @@ export function DocxPluginHost({ editor, doc, selection }: DocxPluginHostProps) 
           },
           focusEditor() {
             editor?.commands.focus()
+          },
+          insertParagraphAfterSelection(text) {
+            if (!editor) return
+            try {
+              const { state } = editor
+              const { $to } = state.selection
+              const depth = $to.depth > 0 ? 1 : 0
+              const insertPos = depth > 0 ? $to.after(depth) : Math.min(state.selection.to, state.doc.content.size)
+              editor
+                .chain()
+                .focus()
+                .insertContentAt(insertPos, {
+                  type: 'docParagraph',
+                  content: text ? [{ type: 'text', text }] : [],
+                })
+                .run()
+            } catch {
+              editor.chain().focus().insertContent(`\n${text}`).run()
+            }
           },
         },
         ui: {
@@ -167,7 +217,7 @@ export function DocxPluginHost({ editor, doc, selection }: DocxPluginHostProps) 
         },
       }
     },
-    [editor, doc, selection, updateRuntime],
+    [editor, doc, liveSelection, updateRuntime],
   )
 
   // ── Collect active sidebar plugins ─────────────────────────────────────────

@@ -8,17 +8,15 @@ import { useManuscriberPluginStore } from '../../store/manuscriberPluginStore'
 import {
   capturePdfPageAsDataUrl,
   parseSpotlightBlocks,
-  callDirectVisionApi,
+  transcribePageImage,
   SYSTEM_SPOTLIGHT_RULES,
   PROMPT_PRESETS,
 } from '../../services/visionService'
-import { isManusFile, unpackManusProject, saveProjectFile } from '../../services/projectIoService'
 import type { StagingLine } from '../../types'
 import { ManuscriberWelcomeCard } from './ManuscriberWelcomeCard'
 import { PdfPageFeedCard } from './PdfPageFeedCard'
 import {
   IconFolderOpen,
-  IconSave,
   IconDocument,
   IconChevronLeft,
   IconChevronRight,
@@ -151,10 +149,18 @@ function PdfThumbnailItem({ pdfDoc, pageNo, isActive, status, onClick }: PdfThum
 interface PdfViewerProps {
   context: DocxPluginContext
   compact?: boolean
+  headerPrefix?: React.ReactNode
   onOpenWorkbench?: () => void
+  onTranscriptionSuccess?: (pageNo: number, count: number) => void
 }
 
-export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, onOpenWorkbench }) => {
+export const PdfViewer: React.FC<PdfViewerProps> = ({
+  context,
+  compact = false,
+  headerPrefix,
+  onOpenWorkbench,
+  onTranscriptionSuccess,
+}) => {
   const store = useManuscriberPluginStore()
   const {
     pdfDocument,
@@ -319,55 +325,24 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
   const handleLoadBuffer = async (buffer: ArrayBuffer, fileName: string) => {
     setIsLoadingDoc(true)
     try {
-      if (isManusFile(fileName)) {
-        // Project .manus
-        const jsonStr = new TextDecoder().decode(buffer)
-        const project = unpackManusProject(jsonStr)
-        if (project.pdfBuffer && project.pdfBuffer.byteLength > 0) {
-          const safeCopy = project.pdfBuffer.slice(0)
-          const workerData = project.pdfBuffer.slice(0)
-          store.setPdfBytes(safeCopy)
+      const safeCopy = buffer.slice(0)
+      const workerData = buffer.slice(0)
+      store.setPdfBytes(safeCopy)
+      store.setPdfFileName(fileName)
 
-          const loadingTask = getDocument({
-            data: new Uint8Array(workerData),
-            ...DOC_OPTS,
-          })
-          const pdf = await loadingTask.promise
-          store.setPdfDocument(pdf)
-          store.setTotalPages(pdf.numPages)
-        }
-        store.setPdfFileName(fileName)
-        store.setCurrentPage(1)
-        store.setLines(project.lines)
+      const loadingTask = getDocument({
+        data: new Uint8Array(workerData),
+        ...DOC_OPTS,
+      })
+      const pdf = await loadingTask.promise
+      store.setPdfDocument(pdf)
+      store.setTotalPages(pdf.numPages)
+      store.setCurrentPage(1)
+      store.setLines([]) // Fresh document
 
-        if (project.pagesMeta) {
-          Object.entries(project.pagesMeta).forEach(([p, meta]: any) => {
-            store.setPageStatus(Number(p), meta.status)
-          })
-        }
-
-        context.ui.showToast(`Proyek .manus "${fileName}" berhasil dibuka (${project.lines.length} baris)`, 'success')
-      } else {
-        // Standard PDF file
-        const safeCopy = buffer.slice(0)
-        const workerData = buffer.slice(0)
-        store.setPdfBytes(safeCopy)
-        store.setPdfFileName(fileName)
-
-        const loadingTask = getDocument({
-          data: new Uint8Array(workerData),
-          ...DOC_OPTS,
-        })
-        const pdf = await loadingTask.promise
-        store.setPdfDocument(pdf)
-        store.setTotalPages(pdf.numPages)
-        store.setCurrentPage(1)
-        store.setLines([]) // Fresh document
-
-        context.ui.showToast(`PDF "${fileName}" berhasil dimuat (${pdf.numPages} halaman)`, 'success')
-      }
+      context.ui.showToast(`PDF "${fileName}" berhasil dimuat (${pdf.numPages} halaman)`, 'success')
     } catch (err: any) {
-      console.error('Failed to load PDF or .manus:', err)
+      console.error('Failed to load PDF:', err)
       context.ui.showToast(`Gagal membuka berkas: ${err?.message || 'Format tidak valid'}`, 'error')
     } finally {
       setIsLoadingDoc(false)
@@ -425,9 +400,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
       const dataUrl = await capturePdfPageAsDataUrl(pdfDocument, targetPage, 2.0)
       const presetKey = visionConfig.promptPreset || visionConfig.activePreset || 'matanSyarah'
       const preset = PROMPT_PRESETS[presetKey] || PROMPT_PRESETS.matanSyarah
-      const fullPrompt = `${SYSTEM_SPOTLIGHT_RULES}\n\n${preset.prompt}`
-      const rawResponse = await callDirectVisionApi(dataUrl, fullPrompt, visionConfig)
-      const parsedBlocks = parseSpotlightBlocks(rawResponse, targetPage)
+      const fullPrompt = `${preset.prompt}\n\n${SYSTEM_SPOTLIGHT_RULES}`
+
+      const result = await transcribePageImage(dataUrl, fullPrompt)
+
+      if (!result.ok) {
+        throw new Error(result.error || 'Gagal mentranskripsi halaman via Vision AI.')
+      }
+
+      const parsedBlocks = parseSpotlightBlocks(result.text, targetPage)
+      if (parsedBlocks.length === 0) {
+        throw new Error('Tidak ada blok teks yang terdeteksi dari hasil analisis AI.')
+      }
 
       const newLines: StagingLine[] = parsedBlocks.map((b, idx) => ({
         id: b.id || `p${targetPage}_b${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -439,13 +423,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
         transliteration: b.transliteration || '',
         status: 'unverified',
         type: b.type,
+        tag: b.tag || (b.type || 'TEKS').toUpperCase(),
         bbox: b.bbox,
         box_2d: b.box_2d,
+        isRtl: b.isRtl,
       }))
 
       store.addPageLines(targetPage, newLines)
       store.setPageStatus(targetPage, 'done')
       store.setCurrentPage(targetPage)
+      store.setActiveLineId(newLines[0].id)
 
       store.addScanSession({
         id: `session_${Date.now()}`,
@@ -456,45 +443,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
         lines: newLines,
       })
 
-      context.ui.showToast(`Halaman ${targetPage} selesai ditranskripsi (${newLines.length} baris)`, 'success')
+      context.ui.showToast(`Halaman ${targetPage} berhasil ditranskripsi (${newLines.length} baris naskah terdeteksi)`, 'success')
+      if (onTranscriptionSuccess) {
+        onTranscriptionSuccess(targetPage, newLines.length)
+      }
     } catch (err: any) {
       console.error('AI Transcription failed:', err)
       store.setPageStatus(targetPage, 'error')
-      context.ui.showToast(`Transkripsi gagal: ${err?.message || 'Error koneksi API'}`, 'error')
-    }
-  }
-
-  // Save .manus project
-  const handleSaveManusProject = async () => {
-    if (!pdfBytes) {
-      context.ui.showToast('Tidak ada PDF yang sedang aktif', 'info')
-      return
-    }
-
-    try {
-      const saveName = (pdfFileName || 'naskah').replace(/\.(pdf|manus)$/i, '') + '.manus'
-      const res = await saveProjectFile(saveName, pdfBytes, lines, store.pagesMeta || {})
-      if (res.ok) {
-        context.ui.showToast(`Proyek disimpan: ${saveName}`, 'success')
-      } else {
-        context.ui.showToast(`Gagal menyimpan: ${res.error || 'Error'}`, 'error')
-      }
-    } catch (err: any) {
-      console.error('Failed to save project:', err)
-      context.ui.showToast('Gagal menyimpan berkas .manus', 'error')
+      const msg = err?.message || 'Error koneksi API'
+      context.ui.showToast(`Transkripsi gagal: ${msg}`, 'error')
     }
   }
 
   return (
     <div className={`manuscriber-pdf-viewer ${compact ? 'compact' : ''}`}>
-      {/* Top PDF Toolbar */}
+      {/* Top PDF Toolbar — Unified with Header (Distributed Left & Right) */}
       <div className="pdf-viewer-toolbar">
+        {headerPrefix}
+
         <div className="pdf-toolbar-group">
           <input
             type="file"
             ref={fileInputRef}
             style={{ display: 'none' }}
-            accept=".pdf,.manus"
+            accept=".pdf"
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) handleLoadFile(file)
@@ -520,24 +492,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
             type="button"
             className="btn-pdf-tool icon-only"
             onClick={handlePickPdf}
-            title="Buka Berkas Naskah (PDF atau .manus)"
-            aria-label="Buka Naskah"
+            title="Buka Berkas PDF Naskah"
+            aria-label="Buka Naskah PDF"
           >
             <IconFolderOpen size={14} />
           </button>
-
-          {/* Save .manus Project */}
-          {pdfBytes && (
-            <button
-              type="button"
-              className="btn-pdf-tool icon-only"
-              onClick={handleSaveManusProject}
-              title="Simpan seluruh progres & koordinat ke berkas .manus"
-              aria-label="Simpan Berkas .manus"
-            >
-              <IconSave size={14} />
-            </button>
-          )}
 
           {/* Filename Badge (Compact) */}
           {pdfFileName && (
@@ -545,22 +504,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
               <IconDocument size={12} />
               <span className="pdf-filename-text">{pdfFileName}</span>
             </span>
-          )}
-        </div>
-
-        {/* Right PDF Toolbar Group */}
-        <div className="pdf-toolbar-group">
-          {/* Workbench Quick Expand Button */}
-          {onOpenWorkbench && (
-            <button
-              type="button"
-              className="btn-pdf-tool icon-only"
-              onClick={onOpenWorkbench}
-              title="Buka Staging Workbench Layar Penuh"
-              aria-label="Buka Staging Workbench"
-            >
-              <IconWorkbench size={14} />
-            </button>
           )}
         </div>
       </div>
@@ -696,7 +639,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ context, compact = false, 
                 {/* Status Simpan Chip */}
                 <span
                   className="manuscriber-status-chip manuscriber-saved-chip"
-                  title="Seluruh perubahan naskah & staging telah tersimpan"
+                  title={
+                    store.lastSavedTimestamp
+                      ? `Tersimpan otomatis di dokumen Word: ${new Date(store.lastSavedTimestamp).toLocaleTimeString()}`
+                      : 'Seluruh perubahan naskah & staging telah tersimpan di dokumen Word'
+                  }
                 >
                   ✓ Tersimpan
                 </span>

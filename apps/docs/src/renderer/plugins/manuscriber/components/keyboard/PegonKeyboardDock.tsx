@@ -5,21 +5,28 @@
  * 2. ⚡ Translit: Transliterasi kata Latin otomatis saat Spasi/Enter
  * 3. 🕌 Arab: Layout Hijaiyah Standar (fonetik Arab murni)
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import type { DocxPluginContext } from '../../../types'
 import { useManuscriberPluginStore } from '../../store/manuscriberPluginStore'
 import { dictationService } from '../../services/dictationService'
 import type { KeyboardInputMode } from '../../types'
+import {
+  transliterateLatinToPegon,
+  transliterateWord,
+  hasLatinText,
+  getPegonChar,
+} from '../../services/pegonTranslitService'
 import {
   IconKeyboard,
   IconLightning,
   IconArabic,
   IconSoundOn,
   IconSoundMute,
-  IconChevronDown,
   IconMic,
-  IconDismiss,
   IconEyeHide,
   IconInfo,
+  IconMinus,
+  IconChevronUp,
 } from '../icons/ManuscriberIcons'
 
 interface KeyItem {
@@ -133,19 +140,48 @@ const QUICK_HARAKAT = [
 ]
 
 export interface PegonKeyboardDockProps {
+  context?: DocxPluginContext
   onClose?: () => void
   onOpenGuide?: () => void
 }
 
-export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockProps) {
+export function PegonKeyboardDock({ context, onClose, onOpenGuide }: PegonKeyboardDockProps) {
   const keyboardMode = useManuscriberPluginStore((s) => s.keyboardMode)
   const setKeyboardMode = useManuscriberPluginStore((s) => s.setKeyboardMode)
-  const isKeyboardOpen = useManuscriberPluginStore((s) => s.isKeyboardOpen)
-  const setKeyboardOpen = useManuscriberPluginStore((s) => s.setKeyboardOpen)
+  const isKeyboardVisible = useManuscriberPluginStore((s) => s.isKeyboardVisible)
+  const setIsKeyboardVisible = useManuscriberPluginStore((s) => s.setIsKeyboardVisible)
+  const activeInputElement = useManuscriberPluginStore((s) => s.activeInputElement)
+  const activeLineId = useManuscriberPluginStore((s) => s.activeLineId)
+  const updateLine = useManuscriberPluginStore((s) => s.updateLine)
+  const lines = useManuscriberPluginStore((s) => s.lines)
 
   const [isShiftActive, setIsShiftActive] = useState(false)
   const [isCapsLock, setIsCapsLock] = useState(false)
   const [isSoundEnabled, setIsSoundEnabled] = useState(true)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('manuscriber_keyboard_coords')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (
+          typeof parsed.x === 'number' &&
+          typeof parsed.y === 'number' &&
+          parsed.x >= 0 &&
+          parsed.x < window.innerWidth - 80 &&
+          parsed.y >= 0 &&
+          parsed.y < window.innerHeight - 80
+        ) {
+          return parsed
+        }
+      }
+    } catch {}
+    return null
+  })
+
+
   const [keyboardScale, setKeyboardScale] = useState<'s' | 'm' | 'l'>(() => {
     try {
       const saved = localStorage.getItem('manuscriber_keyboard_scale')
@@ -162,6 +198,9 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
   }
 
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const dockRef = useRef<HTMLDivElement | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null)
+  const dragMovedRef = useRef<boolean>(false)
 
   function playClick() {
     if (!isSoundEnabled) return
@@ -187,59 +226,254 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
     } catch {}
   }
 
+  // Dragging event handler pada header dock
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, select, .pegon-mode-selector, .keyboard-scale-selector')) {
+      return
+    }
+
+    const currentX = position
+      ? position.x
+      : dockRef.current
+      ? dockRef.current.getBoundingClientRect().left
+      : Math.max(20, (window.innerWidth - 690) / 2)
+
+    const currentY = position
+      ? position.y
+      : dockRef.current
+      ? dockRef.current.getBoundingClientRect().top
+      : Math.max(20, window.innerHeight - 340)
+
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: currentX,
+      posY: currentY,
+    }
+    dragMovedRef.current = false
+    setIsDragging(true)
+  }
+
+  // Dragging event handler pada chip melayang saat diminimalkan
+  const handleMinimizedMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) {
+      return
+    }
+
+    dragMovedRef.current = false
+
+    const currentX = position
+      ? position.x
+      : dockRef.current
+      ? dockRef.current.getBoundingClientRect().left
+      : Math.max(20, window.innerWidth - 260)
+
+    const currentY = position
+      ? position.y
+      : dockRef.current
+      ? dockRef.current.getBoundingClientRect().top
+      : Math.max(20, window.innerHeight - 70)
+
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: currentX,
+      posY: currentY,
+    }
+    setIsDragging(true)
+  }
+
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const deltaX = e.clientX - dragRef.current.startX
+      const deltaY = e.clientY - dragRef.current.startY
+
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragMovedRef.current = true
+      }
+
+      const dockWidth = dockRef.current ? dockRef.current.offsetWidth : (isMinimized ? 240 : 690)
+      const dockHeight = dockRef.current ? dockRef.current.offsetHeight : (isMinimized ? 44 : 300)
+
+      const nextX = Math.max(10, Math.min(window.innerWidth - dockWidth - 10, dragRef.current.posX + deltaX))
+      const nextY = Math.max(10, Math.min(window.innerHeight - dockHeight - 10, dragRef.current.posY + deltaY))
+
+      setPosition({ x: nextX, y: nextY })
+    }
+
+    const handleMouseUp = (e: MouseEvent) => {
+      setIsDragging(false)
+      if (dragRef.current) {
+        const deltaX = e.clientX - dragRef.current.startX
+        const deltaY = e.clientY - dragRef.current.startY
+        const dockWidth = dockRef.current ? dockRef.current.offsetWidth : (isMinimized ? 240 : 690)
+        const dockHeight = dockRef.current ? dockRef.current.offsetHeight : (isMinimized ? 44 : 300)
+        const finalX = Math.max(10, Math.min(window.innerWidth - dockWidth - 10, dragRef.current.posX + deltaX))
+        const finalY = Math.max(10, Math.min(window.innerHeight - dockHeight - 10, dragRef.current.posY + deltaY))
+        const finalPos = { x: finalX, y: finalY }
+        setPosition(finalPos)
+        try {
+          localStorage.setItem('manuscriber_keyboard_coords', JSON.stringify(finalPos))
+        } catch {}
+      }
+      dragRef.current = null
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, isMinimized])
+
   function getActiveTextarea(): HTMLTextAreaElement | null {
+    const active = document.activeElement
+    if (active && active.tagName === 'TEXTAREA') {
+      return active as HTMLTextAreaElement
+    }
+    if (
+      activeInputElement &&
+      activeInputElement.tagName === 'TEXTAREA' &&
+      document.body.contains(activeInputElement)
+    ) {
+      return activeInputElement as HTMLTextAreaElement
+    }
     return document.querySelector(
-      '.focus-line-container textarea, .staging-line-card.active textarea, .plugin-canvas-block-textarea, textarea:focus'
+      '.staging-focus-container textarea, .manuscriber-line-card.active textarea, .manuscriber-line-card textarea, textarea.line-card-textarea, textarea.pegon-input-target, .focus-line-container textarea, .staging-line-card.active textarea, .plugin-canvas-block-textarea, textarea:focus'
     ) as HTMLTextAreaElement | null
+  }
+
+  function updateTextareaValue(
+    ta: HTMLTextAreaElement,
+    nextVal: string,
+    nextCaretStart: number,
+    nextCaretEnd = nextCaretStart
+  ) {
+    const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+    const prototype = Object.getPrototypeOf(ta)
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
+
+    if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+      prototypeValueSetter.call(ta, nextVal)
+    } else if (valueSetter) {
+      valueSetter.call(ta, nextVal)
+    } else {
+      ta.value = nextVal
+    }
+
+    ta.selectionStart = nextCaretStart
+    ta.selectionEnd = nextCaretEnd
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    ta.dispatchEvent(new Event('change', { bubbles: true }))
+
+    if (activeLineId) {
+      updateLine(activeLineId, { text: nextVal })
+    }
   }
 
   function insertText(char: string) {
     playClick()
     const ta = getActiveTextarea()
-    if (!ta) return
-    const start = ta.selectionStart ?? ta.value.length
-    const end = ta.selectionEnd ?? ta.value.length
-    const prev = ta.value
-    const next = prev.slice(0, start) + char + prev.slice(end)
-    ta.value = next
-    const nextCaret = start + char.length
-    ta.selectionStart = nextCaret
-    ta.selectionEnd = nextCaret
-    ta.dispatchEvent(new Event('input', { bubbles: true }))
-    ta.dispatchEvent(new Event('change', { bubbles: true }))
-    ta.focus()
+    const isTaActive = ta && (document.activeElement === ta || (!context?.editor?.isFocused && document.querySelector('.manuscriber-workbench-body')))
+
+    if (ta && (isTaActive || !context?.editor?.isFocused)) {
+      const start = ta.selectionStart ?? ta.value.length
+      const end = ta.selectionEnd ?? ta.value.length
+      const prev = ta.value
+      const next = prev.slice(0, start) + char + prev.slice(end)
+      const nextCaret = start + char.length
+      updateTextareaValue(ta, next, nextCaret)
+      ta.focus()
+      return
+    }
+
+    // Jika di Dokumen Word (Tiptap ProseMirror)
+    if (context?.editor) {
+      context.editor.chain().focus().insertContent(char).run()
+      return
+    }
+
+    if (context?.actions?.insertText) {
+      context.actions.insertText(char)
+      return
+    }
+
+    if (ta) {
+      const start = ta.selectionStart ?? ta.value.length
+      const end = ta.selectionEnd ?? ta.value.length
+      const prev = ta.value
+      const next = prev.slice(0, start) + char + prev.slice(end)
+      const nextCaret = start + char.length
+      updateTextareaValue(ta, next, nextCaret)
+      ta.focus()
+    }
   }
 
   function handleBackspace() {
     playClick()
     const ta = getActiveTextarea()
-    if (!ta) return
-    let start = ta.selectionStart ?? ta.value.length
-    let end = ta.selectionEnd ?? ta.value.length
-    const prev = ta.value
-    if (start === end) {
-      if (start === 0) return
-      start = start - 1
+    const isTaActive = ta && (document.activeElement === ta || (!context?.editor?.isFocused && document.querySelector('.manuscriber-workbench-body')))
+
+    if (ta && (isTaActive || !context?.editor?.isFocused)) {
+      let start = ta.selectionStart ?? ta.value.length
+      let end = ta.selectionEnd ?? ta.value.length
+      const prev = ta.value
+      if (start === end) {
+        if (start === 0) return
+        start = start - 1
+      }
+      const next = prev.slice(0, start) + prev.slice(end)
+      updateTextareaValue(ta, next, start)
+      ta.focus()
+      return
     }
-    const next = prev.slice(0, start) + prev.slice(end)
-    ta.value = next
-    ta.selectionStart = start
-    ta.selectionEnd = start
-    ta.dispatchEvent(new Event('input', { bubbles: true }))
-    ta.dispatchEvent(new Event('change', { bubbles: true }))
-    ta.focus()
+
+    if (context?.editor) {
+      const { from, to, empty } = context.editor.state.selection
+      if (empty) {
+        if (from > 1) {
+          context.editor.chain().focus().deleteRange({ from: from - 1, to: from }).run()
+        }
+      } else {
+        context.editor.chain().focus().deleteRange({ from, to }).run()
+      }
+    }
   }
 
-  // Intersep Keyboard Fisik
+  // Intersep Keyboard Fisik Penuh (Hardware Keyboard Takeover)
   useEffect(() => {
+    if (!isKeyboardVisible) return
+
     const onKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null
+      if (activeEl) {
+        if (activeEl.closest('.manuscriber-modal, .manuscriber-settings-modal, .manuscriber-guide-modal')) {
+          return
+        }
+        if (activeEl.tagName === 'INPUT' && (activeEl as HTMLInputElement).type === 'text') {
+          if (!activeEl.classList.contains('pegon-input-target')) return
+        }
+      }
+
+      if (typeof e.getModifierState === 'function') {
+        const caps = e.getModifierState('CapsLock')
+        if (caps !== isCapsLock) {
+          setIsCapsLock(caps)
+        }
+      }
+
       if (e.key === 'Shift') { setIsShiftActive(true); return; }
-      if (e.key === 'CapsLock') { setIsCapsLock((p) => !p); return; }
+      if (e.key === 'CapsLock') { return; }
 
       const ta = getActiveTextarea()
-      if (!ta || document.activeElement !== ta) return
+      const isTaActive = ta && (activeEl === ta || (!context?.editor?.isFocused && document.querySelector('.manuscriber-workbench-body')))
+      const isWordActive = context?.editor && (context.editor.isFocused || activeEl?.closest('.ProseMirror, .tiptap'))
 
-      playClick()
+      if (!isTaActive && !isWordActive && !ta && !context?.editor) return
 
       if (e.ctrlKey || e.altKey || e.metaKey) return
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Escape'].includes(e.key)) return
@@ -247,12 +481,64 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
 
       if (e.key === 'Tab') {
         e.preventDefault()
+        e.stopPropagation()
         insertText('    ')
         return
       }
 
+      // ── MODE TRANSLIT ──────────────────────────────────────────────────────────
+      if (keyboardMode === 'translit') {
+        // Transliterasi kata Latin saat menekan Spasi, Enter, atau Tanda Baca
+        if (e.key === ' ' || e.key === 'Enter' || [',', '.', ';', ':', '!', '?'].includes(e.key)) {
+          if (isTaActive && ta) {
+            const start = ta.selectionStart ?? ta.value.length
+            const textVal = ta.value || ''
+            const textBefore = textVal.slice(0, start)
+            const match = textBefore.match(/([a-zA-Z0-9'"`éèê]+)$/)
+
+            if (match) {
+              e.preventDefault()
+              e.stopPropagation()
+              playClick()
+
+              const latinWord = match[1]
+              const wordStart = start - latinWord.length
+              const pegonWord = transliterateWord(latinWord)
+              const delimiter = e.key === 'Enter' ? '\n' : e.key
+              const nextVal = textVal.slice(0, wordStart) + pegonWord + delimiter + textVal.slice(start)
+              const nextCaret = wordStart + pegonWord.length + delimiter.length
+              updateTextareaValue(ta, nextVal, nextCaret)
+              return
+            }
+          } else if (context?.editor) {
+            const editor = context.editor
+            const { from } = editor.state.selection
+            const textBefore = editor.state.doc.textBetween(Math.max(0, from - 50), from)
+            const match = textBefore.match(/([a-zA-Z0-9'"`éèê]+)$/)
+
+            if (match) {
+              e.preventDefault()
+              e.stopPropagation()
+              playClick()
+
+              const latinWord = match[1]
+              const wordStart = from - latinWord.length
+              const pegonWord = transliterateWord(latinWord)
+              const delimiter = e.key === 'Enter' ? '\n' : e.key
+
+              editor.chain().focus().deleteRange({ from: wordStart, to: from }).insertContent(pegonWord + delimiter).run()
+              return
+            }
+          }
+        }
+        // Biarkan tombol karakter Latin biasa diketik secara natural agar pengguna dapat melihat kata sebelum spasi
+        return
+      }
+
+      playClick()
+
+      // ── MODE ARAB ─────────────────────────────────────────────────────────────
       if (keyboardMode === 'arabic') {
-        // Pemetaan tombol mode Arab
         const ARAB_MAP_NORM: Record<string, string> = {
           '`': 'ذ', '1': '١', '2': '٢', '3': '٣', '4': '٤', '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩', '0': '٠',
           '-': 'ث', '=': 'ح', 'q': 'ق', 'w': 'و', 'e': 'ي', 'r': 'ر', 't': 'ت', 'y': 'ي', 'u': 'و', 'i': 'ي', 'o': 'و', 'p': 'ف',
@@ -265,71 +551,105 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
           'G': 'غ', 'H': 'ح', 'J': 'ج', 'K': 'ق', 'L': 'ل', ':': ':', '"': 'ء', 'Z': 'ظ', 'X': 'ئ', 'C': 'أ', 'V': 'إ',
           'B': 'ب', 'N': 'ن', 'M': 'م', '<': '،', '>': '.', '?': '؟',
         }
-        const effShift = e.shiftKey || isShiftActive || isCapsLock
-        const char = effShift ? ARAB_MAP_SHIFT[e.key] : ARAB_MAP_NORM[e.key]
+        const isPhysicalShift = e.shiftKey || isShiftActive
+        const lk = e.key.toLowerCase()
+        const uk = e.key.toUpperCase()
+
+        let char: string | undefined = undefined
+        if (isPhysicalShift) {
+          char = ARAB_MAP_SHIFT[e.key] || ARAB_MAP_SHIFT[uk] || ARAB_MAP_SHIFT[lk]
+        }
+        if (!char) {
+          char = ARAB_MAP_NORM[lk] || ARAB_MAP_NORM[e.key]
+        }
+        if (!char && isPhysicalShift) {
+          char = ARAB_MAP_NORM[lk]
+        }
         if (char) {
           e.preventDefault()
+          e.stopPropagation()
           insertText(char)
-          if (isShiftActive && !isCapsLock) setIsShiftActive(false)
+          if (isShiftActive) setIsShiftActive(false)
         }
         return
       }
 
+      // ── MODE PEGON ────────────────────────────────────────────────────────────
       if (keyboardMode === 'pegon') {
-        const start = ta.selectionStart ?? 0
-        const textVal = ta.value || ''
-        const charBefore = start > 0 ? textVal[start - 1] : ''
-
-        // Smart Digraphs
         const DIGRAPHS: Record<string, Record<string, string>> = {
-          'ن': { g: 'ڠ', G: 'ڠ', y: 'ۑ', Y: 'ۑ' },
-          'د': { h: 'ڊ', H: 'ڊ' },
-          'ت': { h: 'ڟ', H: 'ڟ' },
-          'ك': { h: 'خ', H: 'خ' },
-          'س': { y: 'ش', Y: 'ش' },
-          'چ': { h: 'ح', H: 'ح' },
-          'ڮ': { h: 'غ', H: 'غ' },
-        }
-        if (charBefore && DIGRAPHS[charBefore] && DIGRAPHS[charBefore][e.key]) {
-          e.preventDefault()
-          const rep = DIGRAPHS[charBefore][e.key]
-          const repStart = start - 1
-          ta.value = textVal.slice(0, repStart) + rep + textVal.slice(start)
-          ta.selectionStart = repStart + rep.length
-          ta.selectionEnd = repStart + rep.length
-          ta.dispatchEvent(new Event('input', { bubbles: true }))
-          return
+          'ن': { g: 'ڠ', y: 'ۑ' },
+          'د': { h: 'ڊ' },
+          'ت': { h: 'ڟ' },
+          'ك': { h: 'خ' },
+          'س': { y: 'ش' },
+          'چ': { h: 'ح' },
+          'ڮ': { h: 'غ' },
         }
 
-        // Kaidah Vokal Alif Awal Kata
-        const isWordStart = start === 0 || charBefore <= ' ' || ',.;:!?()[]{}<>-/"\''.includes(charBefore)
-        if (isWordStart) {
-          const lk = e.key.toLowerCase()
-          if (lk === 'a') { e.preventDefault(); insertText(e.shiftKey ? 'ا\u064E' : 'ا'); return; }
-          if (lk === 'i') { e.preventDefault(); insertText(e.shiftKey ? 'ا\u0650' : 'اي'); return; }
-          if (lk === 'u') { e.preventDefault(); insertText(e.shiftKey ? 'ا\u064F' : 'او'); return; }
-          if (lk === 'e') { e.preventDefault(); insertText(e.shiftKey ? 'ا\u0653' : 'اي'); return; }
-          if (lk === 'o') { e.preventDefault(); insertText(e.shiftKey ? 'ا\u0652' : 'او'); return; }
+        const isPhysicalShift = e.shiftKey || isShiftActive
+        const lk = e.key.toLowerCase()
+
+        // Cek target textarea
+        if (isTaActive && ta) {
+          const start = ta.selectionStart ?? 0
+          const textVal = ta.value || ''
+          const charBefore = start > 0 ? textVal[start - 1] : ''
+
+          // 1. Smart Digraphs (Case-Insensitive)
+          if (charBefore && DIGRAPHS[charBefore] && DIGRAPHS[charBefore][lk]) {
+            e.preventDefault()
+            e.stopPropagation()
+            const rep = DIGRAPHS[charBefore][lk]
+            const repStart = start - 1
+            const nextVal = textVal.slice(0, repStart) + rep + textVal.slice(start)
+            const nextCaret = repStart + rep.length
+            updateTextareaValue(ta, nextVal, nextCaret)
+            return
+          }
+
+          // 2. Kaidah Vokal Alif Awal Kata
+          const isWordStart = start === 0 || charBefore <= ' ' || ',.;:!?()[]{}<>-/"\''.includes(charBefore)
+          if (isWordStart) {
+            if (lk === 'a') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u064E' : 'ا'); return; }
+            if (lk === 'i') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0650' : 'اي'); return; }
+            if (lk === 'u') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u064F' : 'او'); return; }
+            if (lk === 'e') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0653' : 'اي'); return; }
+            if (lk === 'o') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0652' : 'او'); return; }
+          }
+        } else if (context?.editor) {
+          // Target Word Editor (Tiptap)
+          const editor = context.editor
+          const { from, empty } = editor.state.selection
+          const pos = from
+          const charBefore = pos > 1 && empty ? editor.state.doc.textBetween(pos - 1, pos) : ''
+
+          // 1. Smart Digraphs di Word (Case-Insensitive)
+          if (charBefore && DIGRAPHS[charBefore] && DIGRAPHS[charBefore][lk]) {
+            e.preventDefault()
+            e.stopPropagation()
+            const rep = DIGRAPHS[charBefore][lk]
+            editor.chain().focus().deleteRange({ from: pos - 1, to: pos }).insertContent(rep).run()
+            return
+          }
+
+          // 2. Kaidah Vokal Alif Awal Kata di Word
+          const isWordStart = pos <= 1 || charBefore <= ' ' || ',.;:!?()[]{}<>-/"\''.includes(charBefore)
+          if (isWordStart) {
+            if (lk === 'a') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u064E' : 'ا'); return; }
+            if (lk === 'i') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0650' : 'اي'); return; }
+            if (lk === 'u') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u064F' : 'او'); return; }
+            if (lk === 'e') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0653' : 'اي'); return; }
+            if (lk === 'o') { e.preventDefault(); e.stopPropagation(); insertText(isPhysicalShift ? 'ا\u0652' : 'او'); return; }
+          }
         }
 
-        const PEGON_MAP_NORM: Record<string, string> = {
-          '`': 'ڊ', '1': '١', '2': '٢', '3': '٣', '4': '٤', '5': '٥', '6': '٦', '7': '٧', '8': '٨', '9': '٩', '0': '٠',
-          '-': 'ث', '=': 'ح', 'q': 'ق', 'w': 'و', 'e': 'ي', 'r': 'ر', 't': 'ت', 'y': 'ي', 'u': 'و', 'i': 'ي', 'o': 'و', 'p': 'ڤ',
-          '[': 'ڠ', ']': 'ۑ', '\\': 'ڟ', 'a': 'ا', 's': 'س', 'd': 'د', 'f': 'ف', 'g': 'ڮ', 'h': 'ه', 'j': 'ج', 'k': 'ك', 'l': 'ل',
-          ';': 'ط', "'": 'ع', 'z': 'ز', 'x': 'خ', 'c': 'چ', 'v': 'ش', 'b': 'ب', 'n': 'ن', 'm': 'م', ',': 'ص', '.': 'ض', '/': 'ظ',
-        }
-        const PEGON_MAP_SHIFT: Record<string, string> = {
-          '~': 'ذ', '_': 'لا', '+': 'خ', 'Q': 'ء', 'W': 'ؤ', 'E': '\u0653', 'R': 'آ', 'T': 'ة', 'Y': 'ى', 'U': '\u064F',
-          'I': '\u0650', 'O': '\u0652', 'P': 'ڤ', '{': 'غ', '}': 'ى', '|': 'ة', 'A': '\u064E', 'S': 'ص', 'D': 'ض', 'F': 'ف',
-          'G': 'غ', 'H': 'ح', 'J': 'ج', 'K': 'ق', 'L': 'ل', ':': ':', '"': 'ء', 'Z': 'ظ', 'X': 'ئ', 'C': 'أ', 'V': 'إ',
-          'B': 'ب', 'N': 'ن', 'M': 'م', '<': '،', '>': '.', '?': '؟',
-        }
-        const effShift = e.shiftKey || isShiftActive || isCapsLock
-        const char = effShift ? PEGON_MAP_SHIFT[e.key] : PEGON_MAP_NORM[e.key]
+        // 3. Pemetaan Pegon Case-Insensitive (Bekerja Baik Huruf Kecil Maupun CapsLock)
+        const char = getPegonChar(e.key, isPhysicalShift)
         if (char) {
           e.preventDefault()
+          e.stopPropagation()
           insertText(char)
-          if (isShiftActive && !isCapsLock) setIsShiftActive(false)
+          if (isShiftActive) setIsShiftActive(false)
         }
       }
     }
@@ -338,13 +658,33 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
       if (e.key === 'Shift') setIsShiftActive(false)
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keyup', onKeyUp, true)
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('keyup', onKeyUp, true)
     }
-  }, [keyboardMode, isShiftActive, isCapsLock])
+  }, [keyboardMode, isShiftActive, isCapsLock, isKeyboardVisible, context])
+
+
+  const currentLine = lines.find((l) => l.id === activeLineId)
+  const currentText = currentLine?.text || ''
+  const hasLatin = hasLatinText(currentText)
+
+  const handleTransliterateActiveText = () => {
+    playClick()
+    const ta = getActiveTextarea()
+    const textToConvert = ta?.value || currentText
+    if (!textToConvert) return
+
+    const converted = transliterateLatinToPegon(textToConvert)
+    if (ta) {
+      updateTextareaValue(ta, converted, converted.length)
+      ta.focus()
+    } else if (activeLineId) {
+      updateLine(activeLineId, { text: converted })
+    }
+  }
 
   function handleKeyClick(key: KeyItem) {
     if (key.id === 'backspace') { handleBackspace(); return; }
@@ -381,17 +721,120 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
     }
   }
 
-  if (!isKeyboardOpen) {
+  if (!isKeyboardVisible) return null
+
+  const handleRestore = () => {
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false
+      return
+    }
+    if (position) {
+      const estimatedWidth = keyboardScale === 's' ? 580 : keyboardScale === 'l' ? 800 : 690
+      const estimatedHeight = 320
+      const clampedX = Math.max(10, Math.min(window.innerWidth - estimatedWidth - 10, position.x))
+      const clampedY = Math.max(10, Math.min(window.innerHeight - estimatedHeight - 10, position.y))
+      setPosition({ x: clampedX, y: clampedY })
+    }
+    setIsMinimized(false)
+  }
+
+  const cycleMode = () => {
+    if (keyboardMode === 'pegon') setKeyboardMode('translit')
+    else if (keyboardMode === 'translit') setKeyboardMode('arabic')
+    else setKeyboardMode('pegon')
+  }
+
+  if (isMinimized) {
     return (
-      <div className="pegon-keyboard-trigger-banner" onClick={() => setKeyboardOpen(true)}>
-        <button
-          type="button"
-          className="btn-expand-pegon-keyboard"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      <div
+        ref={dockRef}
+        className={`pegon-keyboard-minimized-chip ${isDragging ? 'is-dragging' : ''}`}
+        style={
+          position
+            ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
+            : { bottom: 24, right: 32 }
+        }
+        onMouseDown={handleMinimizedMouseDown}
+        dir="ltr"
+        role="region"
+        aria-label="Papan Ketik Pegon Diminimalkan"
+      >
+        {/* Drag Handle / Icon Avatar Badge */}
+        <div
+          className="minimized-chip-icon-badge"
+          title="Papan Ketik Pegon (Klik untuk buka, seret untuk memindahkan)"
+          onClick={handleRestore}
         >
-          <IconKeyboard size={15} />
-          <span>Buka Papan Ketik Pegon</span>
-        </button>
+          <IconKeyboard size={16} />
+        </div>
+
+        {/* Content clickable to restore */}
+        <div
+          className="minimized-chip-content"
+          onClick={handleRestore}
+          title="Klik untuk membuka kembali Papan Ketik Pegon"
+        >
+          <span className="minimized-chip-title">Pegon</span>
+          <span
+            className={`minimized-mode-badge mode-${keyboardMode}`}
+            title={`Mode input: ${keyboardMode.toUpperCase()} (Klik untuk ganti)`}
+            onClick={(e) => {
+              e.stopPropagation()
+              cycleMode()
+            }}
+          >
+            <span className="mode-dot" />
+            {keyboardMode === 'translit' ? 'TRANSLIT' : keyboardMode === 'pegon' ? 'PEGON' : 'ARAB'}
+          </span>
+        </div>
+
+        {/* Actions Group */}
+        <div className="minimized-chip-actions">
+          {/* Quick Mode Switcher */}
+          <button
+            type="button"
+            className="minimized-action-btn minimized-mode-cycle-btn"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              cycleMode()
+            }}
+            title={`Ganti mode (Saat ini: ${keyboardMode.toUpperCase()})`}
+          >
+            Mode
+          </button>
+
+          {/* Expand Button */}
+          <button
+            type="button"
+            className="minimized-action-btn minimized-expand-btn"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleRestore()
+            }}
+            title="Buka Papan Ketik Pegon"
+            aria-label="Buka Papan Ketik Pegon"
+          >
+            <IconChevronUp size={14} />
+          </button>
+
+          {/* Close Button */}
+          <button
+            type="button"
+            className="minimized-action-btn minimized-close-btn"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onClose) onClose()
+              setIsKeyboardVisible(false)
+            }}
+            title="Tutup Papan Ketik"
+            aria-label="Tutup Papan Ketik"
+          >
+            ✕
+          </button>
+        </div>
       </div>
     )
   }
@@ -459,9 +902,18 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
   )
 
   return (
-    <div className={`pegon-keyboard-dock scale-${keyboardScale}`} dir="ltr">
-      {/* Dock Header & Control Bar */}
-      <div className="pegon-keyboard-header">
+    <div
+      ref={dockRef}
+      className={`pegon-keyboard-dock scale-${keyboardScale} ${isDragging ? 'is-dragging' : ''}`}
+      style={
+        position
+          ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
+          : { bottom: 24, right: 32 }
+      }
+      dir="ltr"
+    >
+      {/* Dock Header & Control Bar (Draggable) */}
+      <div className="pegon-keyboard-header" onMouseDown={handleHeaderMouseDown}>
         <div className="dock-title-group">
           <IconKeyboard size={15} />
           <span className="dock-title">Papan Ketik Pegon</span>
@@ -471,8 +923,11 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               type="button"
               className={`mode-toggle-btn ${keyboardMode === 'pegon' ? 'active' : ''}`}
-              onClick={() => setKeyboardMode('pegon')}
-              title="Mode Pegon: QWERTY Pegon Nusantara"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setKeyboardMode('pegon')
+              }}
+              title="Mode Pegon: QWERTY Pegon Nusantara Langsung"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               <IconKeyboard size={12} />
@@ -481,7 +936,10 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               type="button"
               className={`mode-toggle-btn ${keyboardMode === 'translit' ? 'active' : ''}`}
-              onClick={() => setKeyboardMode('translit')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setKeyboardMode('translit')
+              }}
               title="Mode Transliterasi: Ketik Latin terjemah ke Pegon saat spasi"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
@@ -491,7 +949,10 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               type="button"
               className={`mode-toggle-btn ${keyboardMode === 'arabic' ? 'active' : ''}`}
-              onClick={() => setKeyboardMode('arabic')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setKeyboardMode('arabic')
+              }}
               title="Mode Arab: Layout Arab Hijaiyah Standar"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
@@ -500,12 +961,31 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             </button>
           </div>
 
+          {/* Quick Action: Ubah teks Latin di baris aktif ke Pegon */}
+          {hasLatin && (
+            <button
+              type="button"
+              className="dock-translit-action-btn"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleTransliterateActiveText()
+              }}
+              title="Transliterasikan kata Latin di baris aktif ini langsung menjadi Pegon"
+            >
+              <IconLightning size={11} />
+              <span>Ubah ke Pegon</span>
+            </button>
+          )}
+
           {/* Aspect-Ratio Preserving Scale Selector (S / M / L) */}
           <div className="keyboard-scale-selector" title="Skala Ukuran Keyboard (Aspect Ratio Tetap)">
             <button
               type="button"
               className={`scale-btn ${keyboardScale === 's' ? 'active' : ''}`}
-              onClick={() => handleChangeScale('s')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleChangeScale('s')
+              }}
               title="Ukuran Ringkas (S)"
             >
               S
@@ -513,7 +993,10 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               type="button"
               className={`scale-btn ${keyboardScale === 'm' ? 'active' : ''}`}
-              onClick={() => handleChangeScale('m')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleChangeScale('m')
+              }}
               title="Ukuran Sedang (M) - Standar Proporsional"
             >
               M
@@ -521,7 +1004,10 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               type="button"
               className={`scale-btn ${keyboardScale === 'l' ? 'active' : ''}`}
-              onClick={() => handleChangeScale('l')}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleChangeScale('l')
+              }}
               title="Ukuran Besar (L)"
             >
               L
@@ -533,50 +1019,62 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
         </div>
 
         <div className="dock-actions-group">
-          {/* Suara ON / OFF Pill */}
+          {/* Suara ON / OFF — icon only */}
           <button
             type="button"
-            className={`dock-pill-btn ${isSoundEnabled ? 'active' : ''}`}
+            className={`dock-icon-btn ${isSoundEnabled ? 'active' : ''}`}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setIsSoundEnabled((p) => !p)}
             title={isSoundEnabled ? 'Suara Tombol: Aktif (Klik untuk matikan)' : 'Suara Tombol: Senyap (Klik untuk aktifkan)'}
             aria-label="Pengaturan Suara Ketik"
           >
-            {isSoundEnabled ? <IconSoundOn size={12} /> : <IconSoundMute size={12} />}
-            <span>{isSoundEnabled ? 'Suara ON' : 'Suara OFF'}</span>
+            {isSoundEnabled ? <IconSoundOn size={13} /> : <IconSoundMute size={13} />}
           </button>
 
-          {/* Sembunyi Pill */}
-          <button
-            type="button"
-            className="dock-pill-btn"
-            onClick={() => {
-              if (onClose) onClose()
-              setKeyboardOpen(false)
-            }}
-            title="Sembunyikan Papan Ketik Pegon"
-            aria-label="Sembunyi Papan Ketik"
-          >
-            <IconEyeHide size={12} />
-            <span>Sembunyi</span>
-          </button>
-
-          {/* Panduan Pill */}
+          {/* Panduan — icon only */}
           {onOpenGuide && (
             <button
               type="button"
-              className="dock-pill-btn"
+              className="dock-icon-btn"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={onOpenGuide}
               title="Buka Pedoman Aksara Pegon & Kaidah Vokal Alif"
               aria-label="Panduan Pegon"
             >
-              <IconInfo size={12} />
-              <span>Panduan</span>
+              <IconInfo size={13} />
             </button>
           )}
+
+          {/* Kecilkan [−] */}
+          <button
+            type="button"
+            className="dock-icon-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setIsMinimized(true)}
+            title="Kecilkan ke Chip Melayang Ringkas"
+            aria-label="Kecilkan Papan Ketik"
+          >
+            <IconMinus size={13} />
+          </button>
+
+          {/* Tutup [✕] — paling kanan */}
+          <button
+            type="button"
+            className="dock-icon-btn dock-icon-btn-close"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (onClose) onClose()
+              setIsKeyboardVisible(false)
+            }}
+            title="Tutup Papan Ketik Pegon"
+            aria-label="Tutup Papan Ketik"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
-      {/* Quick Harakat Bar */}
+      {/* Quick Harakat Bar — compact 1:1 squares, Arabic char only */}
       <div className="pegon-harakat-bar">
         <span className="harakat-bar-label">Harakat:</span>
         <div className="harakat-pills">
@@ -584,15 +1082,14 @@ export function PegonKeyboardDock({ onClose, onOpenGuide }: PegonKeyboardDockPro
             <button
               key={idx}
               type="button"
-              className={`harakat-pill ${h.isPegon ? 'harakat-pegon' : ''}`}
+              className={`harakat-square ${h.isPegon ? 'harakat-pegon' : ''}`}
               title={h.label}
               onMouseDown={(e) => {
                 e.preventDefault()
                 insertText(h.char)
               }}
             >
-              <span className="harakat-char">{h.display}</span>
-              <span className="harakat-name">{h.label.split(' ')[0]}</span>
+              {h.display}
             </button>
           ))}
         </div>

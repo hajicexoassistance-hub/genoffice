@@ -76,6 +76,12 @@ export interface PluginDocActions {
    * Focus the editor window (brings caret into view, fires Electron focus).
    */
   focusEditor(): void
+
+  /**
+   * Insert a new paragraph immediately after the currently selected block,
+   * without deleting or replacing the current selection.
+   */
+  insertParagraphAfterSelection(text: string): void
 }
 
 /** Actions a plugin can trigger on the host UI chrome. */
@@ -185,6 +191,8 @@ export interface PluginRibbonDecl {
  * The overlay is unmounted when `visible` returns false.
  */
 export interface PluginFloatingDecl {
+  /** Optional identifier for the floating declaration. */
+  id?: string
   /**
    * Whether the overlay should be visible. Evaluated on every context update.
    * The Host will mount/unmount the component when the value transitions.
@@ -195,8 +203,9 @@ export interface PluginFloatingDecl {
    * - 'selection': positioned relative to the current selection bounding box.
    * - 'fixed': uses CSS fixed positioning — the component controls its own
    *   placement via inline styles.
+   * - 'ai-ask': anchored alongside the native "Tanya AI" selection button.
    */
-  anchor: 'selection' | 'fixed'
+  anchor: 'selection' | 'fixed' | 'ai-ask'
   /** The React component rendered as the floating overlay. */
   component: React.ComponentType<{
     context: DocxPluginContext

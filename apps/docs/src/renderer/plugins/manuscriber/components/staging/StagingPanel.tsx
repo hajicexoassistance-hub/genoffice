@@ -122,8 +122,8 @@ export const StagingPanel: React.FC<StagingPanelProps> = () => {
             </div>
             <h4>Workspace Staging Kosong</h4>
             <p>
-              Gunakan tombol <strong>Transkripsi AI</strong> pada halaman PDF di panel sebelah kiri,
-              atau klik <strong>+</strong> untuk mengetik manual menggunakan Keyboard Pegon.
+              Gunakan tombol <strong>Transkripsi AI</strong> pada naskah PDF di Sidebar,
+              atau klik <strong>+</strong> untuk menambah baris dan mengetik menggunakan Keyboard Pegon.
             </p>
           </div>
         ) : isFocusMode && activeLine ? (
