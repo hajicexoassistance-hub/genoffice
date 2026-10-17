@@ -114,12 +114,12 @@ export const ManuscriberCanvasView: React.FC<ManuscriberCanvasViewProps> = ({ co
             onClick={() => store.setIsFocusMode(!store.isFocusMode)}
             title={
               store.isFocusMode
-                ? 'Mode Fokus Aktif (Periksa baris satu per satu) — Klik untuk beralih ke Mode Daftar'
-                : 'Mode Daftar Aktif (Tampilkan seluruh baris) — Klik untuk beralih ke Mode Fokus'
+                ? 'Kembali ke Mode Daftar (Tampilkan seluruh baris) [Esc]'
+                : 'Beralih ke Mode Fokus (Periksa baris satu per satu)'
             }
-            aria-label={store.isFocusMode ? 'Mode Fokus' : 'Mode Daftar'}
+            aria-label={store.isFocusMode ? 'Kembali ke Mode Daftar' : 'Beralih ke Mode Fokus'}
           >
-            {store.isFocusMode ? <IconFocus size={15} /> : <IconList size={15} />}
+            {store.isFocusMode ? <IconList size={15} /> : <IconFocus size={15} />}
           </button>
 
           <span className="workbench-header-divider" />

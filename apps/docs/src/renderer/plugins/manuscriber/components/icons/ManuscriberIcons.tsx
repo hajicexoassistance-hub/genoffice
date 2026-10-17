@@ -180,17 +180,19 @@ export const IconSearch: React.FC<IconProps> = ({ size = defaultProps.size, clas
 
 /* 📋 List View Icon */
 export const IconList: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-    <path d="M4 6h1M4 10h1M4 14h1M7.5 6h9M7.5 10h9M7.5 14h9" />
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M3.5 6h1M3.5 10h1M3.5 14h1M7.5 6h9M7.5 10h9M7.5 14h9" />
   </svg>
 )
 
-/* 🎯 Focus / Single Item Mode Icon */
+/* 🎯 Focus / Single Item Viewfinder Icon */
 export const IconFocus: React.FC<IconProps> = ({ size = defaultProps.size, className, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-    <circle cx="10" cy="10" r="3" />
-    <path d="M10 2.5v2.5M10 15v2.5M2.5 10H5M15 10h2.5" />
-    <path d="M4 4.5A7.5 7.5 0 0 1 16 4.5M16 15.5A7.5 7.5 0 0 1 4 15.5" />
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <path d="M3.5 7V4.5A1 1 0 0 1 4.5 3.5H7" />
+    <path d="M13 3.5h2.5a1 1 0 0 1 1 1V7" />
+    <path d="M16.5 13v2.5a1 1 0 0 1-1 1H13" />
+    <path d="M7 16.5H4.5a1 1 0 0 1-1-1V13" />
+    <circle cx="10" cy="10" r="2.2" fill={color} stroke="none" />
   </svg>
 )
 

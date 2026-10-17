@@ -6,6 +6,7 @@ import {
   IconManuscript,
   IconChevronUp,
   IconChevronDown,
+  IconList,
 } from '../icons/ManuscriberIcons'
 
 interface StagingPanelProps {
@@ -151,6 +152,18 @@ export const StagingPanel: React.FC<StagingPanelProps> = () => {
                 aria-label="Baris Berikutnya"
               >
                 <IconChevronDown size={14} />
+              </button>
+
+              <button
+                type="button"
+                className="btn-focus-step btn-focus-exit"
+                onClick={() => store.setIsFocusMode(false)}
+                title="Kembali ke Mode Daftar (Esc)"
+                aria-label="Kembali ke Mode Daftar"
+                style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px' }}
+              >
+                <IconList size={13} />
+                <span>Daftar</span>
               </button>
             </div>
 
