@@ -19,6 +19,7 @@ import {
   IconCheck,
   IconTrash,
   IconDocument,
+  IconInfo,
 } from '../components/icons/ManuscriberIcons'
 
 interface ManuscriberRibbonProps {
@@ -72,7 +73,10 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
       store.setPdfDocument(pdfDoc)
       store.setTotalPages(pdfDoc.numPages)
       store.setCurrentPage(1)
-      context.ui.showToast(`Naskah "${file.name}" (${pdfDoc.numPages} hal) berhasil dimuat!`, 'success')
+      context.ui.showToast(
+        `Naskah "${file.name}" (${pdfDoc.numPages} hal) berhasil dimuat!`,
+        'success',
+      )
     } catch (err: any) {
       console.error('Failed to load PDF via ribbon:', err)
       context.ui.showToast(`Gagal memuat PDF: ${err?.message || err}`, 'error')
@@ -82,7 +86,11 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
   }
 
   const handleClearDocumentSession = async () => {
-    if (!window.confirm('Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?')) {
+    if (
+      !window.confirm(
+        'Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?',
+      )
+    ) {
       return
     }
     if (store.activeDocKey) {
@@ -100,7 +108,7 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
     store.setIsKeyboardVisible(!isKeyboardVisible)
     context.ui.showToast(
       isKeyboardVisible ? 'Keyboard Pegon ditutup' : 'Keyboard Pegon aktif',
-      'info'
+      'info',
     )
   }
 
@@ -114,7 +122,10 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
         .start()
         .then(() => {
           const engineLabel = cfg.engine === 'groq-whisper' ? 'Groq Whisper Turbo' : 'Web Speech'
-          context.ui.showToast(`Mendengarkan suara (${engineLabel} - ${cfg.lang})... Silakan bicara!`, 'info')
+          context.ui.showToast(
+            `Mendengarkan suara (${engineLabel} - ${cfg.lang})... Silakan bicara!`,
+            'info',
+          )
         })
         .catch((err) => {
           context.ui.showToast(`Gagal memulai dikte: ${err?.message || err}`, 'error')
@@ -123,13 +134,34 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
   }
 
   const handleApplyToWord = () => {
-    if (lines.length === 0) {
-      context.ui.showToast('Workspace Staging kosong. Buka Workbench untuk memuat baris naskah.', 'info')
+    const activePage = store.currentPage || 1
+    const targetLines = lines.filter((l) => (l.pageNo || l.pageNumber || 1) === activePage)
+
+    if (targetLines.length === 0) {
+      context.ui.showToast(
+        `Workspace Staging kosong untuk Halaman ${activePage}. Buka Workbench untuk memuat baris naskah.`,
+        'info',
+      )
       return
     }
 
+    // Konfirmasi bila masih ada baris yang belum berstatus Shahih
+    const unverifiedCount = targetLines.filter((l) => l.status !== 'verified').length
+    if (unverifiedCount > 0) {
+      const proceed = window.confirm(
+        `Perhatian: Masih ada ${unverifiedCount} baris naskah (Halaman ${activePage}) yang belum berstatus Shahih.\n\nTetap terapkan ke Dokumen Word?`,
+      )
+      if (!proceed) {
+        context.ui.showToast(
+          'Penyisipan ke Word dibatalkan untuk memeriksa baris yang belum Shahih.',
+          'info',
+        )
+        return
+      }
+    }
+
     let html = '<div style="direction: rtl; font-family: Amiri, Arial; font-size: 14pt;">'
-    lines.forEach((l) => {
+    targetLines.forEach((l) => {
       if (l.text.trim()) {
         html += `<p style="margin: 4px 0; line-height: 1.8;">${l.text.trim()}</p>`
       }
@@ -137,8 +169,46 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
     html += '</div>'
 
     context.actions.insertHtml(html)
-    context.ui.showToast(`${lines.length} baris berhasil disisipkan ke Word!`, 'success')
+    store.recordCommit(activePage, targetLines)
+    context.ui.showToast(
+      `${targetLines.length} baris (Halaman ${activePage}) berhasil disisipkan ke Word!`,
+      'success',
+    )
+    context.ui.closeCanvasView()
   }
+
+  // Pintasan Keyboard:
+  // - Ctrl + Shift + Enter : Terapkan ke Word
+  // - Ctrl + T             : Buka / Tutup Staging Workbench
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Terapkan ke Word: Ctrl + Shift + Enter
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'Enter' || e.code === 'Enter')) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        handleApplyToWord()
+        return
+      }
+
+      // 2. Buka / Tutup Workbench: Ctrl + T
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (e.key === 't' || e.key === 'T' || e.code === 'KeyT')
+      ) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        context.ui.toggleCanvasView()
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [lines, store.currentPage, context])
 
   const handleInsertActiveLine = () => {
     if (lines.length === 0) {
@@ -148,7 +218,7 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
     const target = lines.find((l) => l.id === activeLineId) || lines[0]
     if (target && target.text.trim()) {
       context.actions.insertHtml(
-        `<p style="direction: rtl; font-family: Amiri, Arial; font-size: 14pt; margin: 4px 0; line-height: 1.8;">${target.text.trim()}</p>`
+        `<p style="direction: rtl; font-family: Amiri, Arial; font-size: 14pt; margin: 4px 0; line-height: 1.8;">${target.text.trim()}</p>`,
       )
       context.ui.showToast('Baris aktif disisipkan ke Word', 'success')
     } else {
@@ -199,7 +269,7 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
             type="button"
             className="rb-big"
             onClick={handleOpenWorkbench}
-            title="Buka Ruang Kerja Split-Pane Manuscriber (PDF + Staging + Tashih Layar Penuh)"
+            title="Buka / Tutup Ruang Kerja Staging Workbench Layar Penuh (Ctrl+T)"
           >
             <span className="rb-big-icon">
               <IconWorkbench size={22} color="var(--word-blue, #185abd)" />
@@ -247,8 +317,6 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
         <div className="ribbon-group-label">Naskah</div>
       </div>
 
-
-
       <div className="ribbon-sep" />
 
       {/* ── Group 3: AI Vision & Pemindaian ──────────────────────────────────── */}
@@ -258,10 +326,16 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
             type="button"
             className="rb-big"
             onClick={() => {
-              context.ui.openCanvasView()
-              if (store.currentPage) {
-                context.ui.showToast(`Halaman ${store.currentPage} siap ditranskripsikan di Workbench`, 'info')
+              if (!store.pdfDocument) {
+                context.ui.showToast('Silakan buka berkas PDF naskah terlebih dahulu.', 'error')
+                context.ui.expandSidebar()
+                store.setSidebarActiveTab('pdf')
+                return
               }
+              context.ui.expandSidebar()
+              store.setSidebarActiveTab('pdf')
+              const targetPage = store.currentPage || 1
+              store.requestTranscribe(targetPage)
             }}
             title="Transkripsi Halaman Naskah Aktif Menggunakan Vision AI"
           >
@@ -308,7 +382,7 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
             type="button"
             className={`rb-big ${isKeyboardVisible ? 'active' : ''}`}
             onClick={handleToggleKeyboard}
-            title="Tampilkan / Sembunyikan Papan Ketik Pegon 3-in-1"
+            title="Tampilkan / Sembunyikan Papan Ketik Pegon 3-in-1 (Ctrl+Q, Minimize: Ctrl+Shift+Q)"
           >
             <span className="rb-big-icon">
               <IconKeyboard size={22} />
@@ -334,16 +408,6 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
               <IconMic size={14} color={isDictating ? '#dc3545' : 'currentColor'} />
               <span>{isDictating ? 'Merekam...' : 'Dikte Suara'}</span>
             </button>
-
-            <button
-              type="button"
-              className="rb-small"
-              onClick={() => context.ui.openModal('manuscriber-guide')}
-              title="Buka Pedoman Aksara Pegon & Kaidah Vokal Alif"
-            >
-              <IconBookOpen size={14} />
-              <span>Pedoman Pegon</span>
-            </button>
           </div>
         </div>
         <div className="ribbon-group-label">Aksara & Suara</div>
@@ -359,10 +423,13 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
             className="rb-big"
             onClick={handleApplyToWord}
             disabled={lines.length === 0}
-            title="Sisipkan seluruh baris staging tashih ke dokumen Word (RTL Amiri 14pt)"
+            title="Sisipkan baris staging tashih halaman aktif ke dokumen Word (Ctrl + Shift + Enter)"
           >
             <span className="rb-big-icon">
-              <IconApplyWord size={22} color={lines.length > 0 ? 'var(--success, #10b981)' : undefined} />
+              <IconApplyWord
+                size={22}
+                color={lines.length > 0 ? 'var(--success, #10b981)' : undefined}
+              />
             </span>
             <span>Terapkan Word</span>
           </button>
@@ -459,6 +526,26 @@ export const ManuscriberRibbon: React.FC<ManuscriberRibbonProps> = ({ context })
           </div>
         </>
       )}
+
+      <div className="ribbon-sep" />
+
+      {/* ── Group: Bantuan & Pintasan ────────────────────────────────────────── */}
+      <div className="ribbon-group">
+        <div className="ribbon-group-items">
+          <button
+            type="button"
+            className="rb-big"
+            onClick={() => context.ui.openModal('manuscriber-app-guide')}
+            title="Buka Panduan Pintasan Keyboard Aplikasi Lengkap"
+          >
+            <span className="rb-big-icon">
+              <IconInfo size={22} color="var(--word-blue, #185abd)" />
+            </span>
+            <span>Panduan App</span>
+          </button>
+        </div>
+        <div className="ribbon-group-label">Bantuan</div>
+      </div>
     </>
   )
 }

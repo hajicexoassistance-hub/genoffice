@@ -1,12 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import type { StagingLine } from '../../types'
-import {
-  IconPlus,
-  IconCheck,
-  IconRefresh,
-  IconSparkles,
-} from '../icons/ManuscriberIcons'
+import { IconPlus, IconCheck, IconRefresh, IconSparkles } from '../icons/ManuscriberIcons'
 
 interface PdfPageFeedCardProps {
   pageNo: number
@@ -36,7 +31,10 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [rendered, setRendered] = useState<boolean>(false)
-  const [pageSize, setPageSize] = useState<{ width: number; height: number }>({ width: 595, height: 842 })
+  const [pageSize, setPageSize] = useState<{ width: number; height: number }>({
+    width: 595,
+    height: 842,
+  })
   const renderTaskRef = useRef<RenderTask | null>(null)
 
   // Fetch unscaled page viewport dimensions on mount / document change
@@ -99,7 +97,7 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
           void renderPage()
         }
       },
-      { rootMargin: '400px' }
+      { rootMargin: '400px' },
     )
 
     if (containerRef.current) {
@@ -113,15 +111,19 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
     }
   }, [pdfDocument, pageNo, zoomScale])
 
+  const onInViewRef = useRef(onInView)
+  onInViewRef.current = onInView
+
   // In-view observer for statusbar tracking
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && entries[0].intersectionRatio >= 0.4 && onInView) {
-          onInView(pageNo)
+        const entry = entries[0]
+        if (entry?.isIntersecting && entry.intersectionRatio >= 0.4) {
+          onInViewRef.current?.(pageNo)
         }
       },
-      { threshold: [0.4] }
+      { threshold: [0.4] },
     )
 
     if (containerRef.current) {
@@ -129,7 +131,7 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
     }
 
     return () => observer.disconnect()
-  }, [pageNo, onInView])
+  }, [pageNo])
 
   const scaledWidth = Math.floor(pageSize.width * zoomScale)
   const scaledHeight = Math.floor(pageSize.height * zoomScale)
@@ -168,6 +170,21 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
             <button type="button" className="btn-page-transcribe loading" disabled>
               <IconSparkles size={12} className="rotating-icon" />
               <span>Memproses AI...</span>
+            </button>
+          ) : status === 'error' ? (
+            <button
+              type="button"
+              className="btn-page-transcribe error"
+              onClick={() => onTranscribe(pageNo)}
+              title="Transkripsi gagal. Klik untuk coba lagi"
+              style={{
+                borderColor: '#e05252',
+                color: '#e05252',
+                backgroundColor: 'rgba(224, 82, 82, 0.08)',
+              }}
+            >
+              <IconRefresh size={12} />
+              <span>Gagal (Coba Lagi)</span>
             </button>
           ) : (
             <button
@@ -227,7 +244,10 @@ export const PdfPageFeedCard: React.FC<PdfPageFeedCardProps> = ({
               if (!line.bbox) return null
               const isSelected = line.id === activeLineId
 
-              let top = 0, left = 0, width = 0, height = 0
+              let top = 0,
+                left = 0,
+                width = 0,
+                height = 0
               if (line.box_2d && Array.isArray(line.box_2d) && line.box_2d.length === 4) {
                 const [ymin, xmin, ymax, xmax] = line.box_2d
                 top = (ymin / 1000) * scaledHeight

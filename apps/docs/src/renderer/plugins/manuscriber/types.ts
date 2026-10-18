@@ -105,7 +105,7 @@ export interface TranscriptionResult {
   isRtl?: boolean
 }
 
-export type KeyboardInputMode = 'pegon' | 'translit' | 'arabic'
+export type KeyboardInputMode = 'pegon' | 'arabic' | 'harokat'
 
 export interface ManuscriptProjectFile {
   version: string
@@ -123,12 +123,7 @@ export interface ManuscriptProjectFile {
 
 // ── Digitizer Studio 1:1 Types ─────────────────────────────────────────────
 
-export type DigitizerLanguageProfile =
-  | 'ar'
-  | 'jawa_pegon'
-  | 'sunda_pegon'
-  | 'melayu_klasik'
-  | 'id'
+export type DigitizerLanguageProfile = 'ar' | 'jawa_pegon' | 'sunda_pegon' | 'melayu_klasik' | 'id'
 
 export interface PageMarginLengths {
   top: string
@@ -177,4 +172,3 @@ export interface DigitizerPageData {
   lastUpdated?: string
   error?: string
 }
-

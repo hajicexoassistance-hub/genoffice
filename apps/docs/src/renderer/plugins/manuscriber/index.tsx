@@ -15,6 +15,7 @@ import { ManuscriberSidebar, ManuscriberSidebarHeaderActions } from './surfaces/
 import { ManuscriberStatusBar } from './surfaces/ManuscriberStatusBar'
 import { ManuscriberSettingsModal } from './surfaces/ManuscriberSettingsModal'
 import { ManuscriberGuideModal } from './surfaces/ManuscriberGuideModal'
+import { ManuscriberAppGuideModal } from './surfaces/ManuscriberAppGuideModal'
 import { PegonKeyboardDock } from './components/keyboard/PegonKeyboardDock'
 import { MaknaGandulFloating } from './components/floating/MaknaGandulFloating'
 import { DocumentSessionSyncController } from './components/DocumentSessionSyncController'
@@ -26,7 +27,8 @@ export const manuscriberPlugin: DocxPluginManifest = {
   id: 'org.pegon.manuscriber',
   name: 'Manuscriber Turats',
   version: '2.0.0',
-  description: 'Transkripsi naskah kuno kitab turats, AI Vision OCR berkoordinat kotak, tashih staging, dan keyboard Pegon 3-in-1.',
+  description:
+    'Transkripsi naskah kuno kitab turats, AI Vision OCR berkoordinat kotak, tashih staging, dan keyboard Pegon 3-in-1.',
   icon: <IconManuscript size={16} />,
 
   // Floating Overlays
@@ -96,6 +98,10 @@ export const manuscriberPlugin: DocxPluginManifest = {
     {
       id: 'manuscriber-guide',
       component: ManuscriberGuideModal,
+    },
+    {
+      id: 'manuscriber-app-guide',
+      component: ManuscriberAppGuideModal,
     },
   ],
 

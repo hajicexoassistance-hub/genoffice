@@ -96,7 +96,7 @@ function PdfThumbnailItem({ pdfDoc, pageNo, isActive, status, onClick }: PdfThum
           observer.disconnect()
         }
       },
-      { rootMargin: '120px' }
+      { rootMargin: '120px' },
     )
 
     if (containerRef.current) {
@@ -246,19 +246,73 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setIsPanning(false)
   }
 
+  const isProgrammaticScrollRef = useRef(false)
+  const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
+    }
+  }, [])
+
   // Synchronize input value with currentPage
   useEffect(() => {
     setPageInputVal(String(currentPage || 1))
   }, [currentPage])
 
-  // Scroll to page
-  const scrollToPage = useCallback((pageNum: number) => {
-    const el = document.getElementById(`pdf-page-card-${pageNum}`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      store.setCurrentPage(pageNum)
+  // Scroll to page with programmatic lock
+  const scrollToPage = useCallback(
+    (pageNum: number) => {
+      const el = document.getElementById(`pdf-page-card-${pageNum}`)
+      if (el) {
+        isProgrammaticScrollRef.current = true
+        if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        store.setCurrentPage(pageNum)
+        programmaticTimeoutRef.current = setTimeout(() => {
+          isProgrammaticScrollRef.current = false
+        }, 800)
+      }
+    },
+    [store],
+  )
+
+  // Synchronize PDF view scroll when currentPage changes from external components (e.g. Workbench stepper)
+  useEffect(() => {
+    if (!currentPage) return
+    const el = document.getElementById(`pdf-page-card-${currentPage}`)
+    if (!el) return
+
+    const vp = viewportRef.current
+    if (vp) {
+      const vpRect = vp.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+      // If element is already nicely visible in viewport, don't trigger unnecessary scroll
+      if (elRect.top >= vpRect.top - 30 && elRect.top <= vpRect.top + 150) {
+        return
+      }
     }
-  }, [store])
+
+    isProgrammaticScrollRef.current = true
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current)
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    programmaticTimeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+    }, 800)
+  }, [currentPage])
+
+  // Stable callback for page in-view events from user scrolling
+  const handlePageInView = useCallback(
+    (viewedPage: number) => {
+      if (isProgrammaticScrollRef.current) return
+      const cur = useManuscriberPluginStore.getState().currentPage || 1
+      if (cur !== viewedPage) {
+        store.setCurrentPage(viewedPage)
+      }
+    },
+    [store],
+  )
 
   // Jump via page number input
   const handlePageInputSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -297,7 +351,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       ) {
         const scaleX = availableWidth / unscaledViewport.width
         const scaleY = availableHeight / unscaledViewport.height
-        const targetScale = Math.min(3.0, Math.max(0.3, Number(Math.min(scaleX, scaleY).toFixed(2))))
+        const targetScale = Math.min(
+          3.0,
+          Math.max(0.3, Number(Math.min(scaleX, scaleY).toFixed(2))),
+        )
         store.setZoomScale(targetScale)
       }
     } catch (err) {
@@ -313,7 +370,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       const unscaledViewport = page.getViewport({ scale: 1.0 })
       const availableWidth = viewportRef.current.clientWidth - 48
       if (availableWidth > 100 && unscaledViewport.width > 0) {
-        const targetScale = Math.min(3.0, Math.max(0.3, Number((availableWidth / unscaledViewport.width).toFixed(2))))
+        const targetScale = Math.min(
+          3.0,
+          Math.max(0.3, Number((availableWidth / unscaledViewport.width).toFixed(2))),
+        )
         store.setZoomScale(targetScale)
       }
     } catch (err) {
@@ -378,7 +438,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   // Listen to consumePendingPdf if available
   useEffect(() => {
     let mounted = true
-    ;(window as any).desktop?.consumePendingPdf?.()
+    ;(window as any).desktop
+      ?.consumePendingPdf?.()
       .then((res: any) => {
         if (!mounted || !res || !res.ok || !res.fileData || !res.name) return
         void handleLoadBuffer(res.fileData, res.name)
@@ -389,9 +450,21 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   }, [])
 
+  // Listen to transcription requests from Ribbon or other surfaces
+  useEffect(() => {
+    if (store.transcribeRequestPage !== null && store.transcribeRequestPage !== undefined) {
+      const pageToTranscribe = store.transcribeRequestPage
+      store.clearTranscribeRequest()
+      void handleTranscribePage(pageToTranscribe)
+    }
+  }, [store.transcribeRequestPage, pdfDocument])
+
   // AI Transcribe action for a specific page
   const handleTranscribePage = async (targetPage: number) => {
-    if (!pdfDocument || targetPage < 1) return
+    if (!pdfDocument || targetPage < 1) {
+      context.ui.showToast('Naskah PDF belum siap atau belum dimuat.', 'error')
+      return
+    }
 
     store.setPageStatus(targetPage, 'transcribing')
     context.ui.showToast(`Memulai transkripsi AI untuk Halaman ${targetPage}...`, 'info')
@@ -414,7 +487,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       }
 
       const newLines: StagingLine[] = parsedBlocks.map((b, idx) => ({
-        id: b.id || `p${targetPage}_b${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id:
+          b.id ||
+          `p${targetPage}_b${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         pageNo: targetPage,
         pageNumber: targetPage,
         text: b.text,
@@ -443,14 +518,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         lines: newLines,
       })
 
-      context.ui.showToast(`Halaman ${targetPage} berhasil ditranskripsi (${newLines.length} baris naskah terdeteksi)`, 'success')
+      context.ui.showToast(
+        `Halaman ${targetPage} berhasil ditranskripsi (${newLines.length} baris naskah terdeteksi)`,
+        'success',
+      )
       if (onTranscriptionSuccess) {
         onTranscriptionSuccess(targetPage, newLines.length)
       }
     } catch (err: any) {
       console.error('AI Transcription failed:', err)
-      store.setPageStatus(targetPage, 'error')
       const msg = err?.message || 'Error koneksi API'
+      store.setPageStatus(targetPage, 'error', msg)
       context.ui.showToast(`Transkripsi gagal: ${msg}`, 'error')
     }
   }
@@ -480,7 +558,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               type="button"
               className={`btn-pdf-tool icon-only ${showThumbnails ? 'active' : ''}`}
               onClick={() => setShowThumbnails((v) => !v)}
-              title={showThumbnails ? 'Sembunyikan daftar thumbnail halaman' : 'Tampilkan daftar thumbnail halaman'}
+              title={
+                showThumbnails
+                  ? 'Sembunyikan daftar thumbnail halaman'
+                  : 'Tampilkan daftar thumbnail halaman'
+              }
               aria-label="Thumbnail Halaman"
             >
               <IconDocumentBulletList size={14} />
@@ -593,7 +675,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                     showSpotlight={showSpotlight}
                     onTranscribe={handleTranscribePage}
                     onSelectLine={(id) => store.setActiveLineId(id)}
-                    onInView={(viewedPage) => store.setCurrentPage(viewedPage)}
+                    onInView={handlePageInView}
                   />
                 ))}
               </div>
@@ -653,7 +735,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                   type="button"
                   className={`manuscriber-statusbar-nav-btn ${showSpotlight ? 'active' : ''}`}
                   onClick={() => setShowSpotlight((v) => !v)}
-                  title={showSpotlight ? 'Sembunyikan layer sorotan spotlight naskah' : 'Tampilkan layer sorotan spotlight naskah'}
+                  title={
+                    showSpotlight
+                      ? 'Sembunyikan layer sorotan spotlight naskah'
+                      : 'Tampilkan layer sorotan spotlight naskah'
+                  }
                 >
                   <IconBulb size={12} color={showSpotlight ? '#d97706' : 'currentColor'} />
                 </button>
@@ -663,7 +749,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                 <button
                   type="button"
                   className="zoom-btn"
-                  onClick={() => store.setZoomScale(Math.max(0.3, Number((zoomScale - 0.1).toFixed(2))))}
+                  onClick={() =>
+                    store.setZoomScale(Math.max(0.3, Number((zoomScale - 0.1).toFixed(2))))
+                  }
                   title="Perkecil (Zoom Out)"
                   aria-label="Perkecil"
                 >
@@ -676,14 +764,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                   max={300}
                   step={5}
                   value={Math.round(zoomScale * 100)}
-                  onChange={(e) => store.setZoomScale(Number((Number(e.target.value) / 100).toFixed(2)))}
+                  onChange={(e) =>
+                    store.setZoomScale(Number((Number(e.target.value) / 100).toFixed(2)))
+                  }
                   title={`Zoom: ${Math.round(zoomScale * 100)}%`}
                   aria-label="Zoom slider"
                 />
                 <button
                   type="button"
                   className="zoom-btn"
-                  onClick={() => store.setZoomScale(Math.min(3.0, Number((zoomScale + 0.1).toFixed(2))))}
+                  onClick={() =>
+                    store.setZoomScale(Math.min(3.0, Number((zoomScale + 0.1).toFixed(2))))
+                  }
                   title="Perbesar (Zoom In)"
                   aria-label="Perbesar"
                 >

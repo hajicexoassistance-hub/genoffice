@@ -6,7 +6,7 @@ import {
   IconRefresh,
   IconStripHarakat,
 } from '../icons/ManuscriberIcons'
-import { stripHarakat } from '../../services/pegonTranslitService'
+import { stripHarakatSelection } from '../../services/pegonTranslitService'
 import {
   callAiTextPrompt,
   HAROKATI_SYSTEM_PROMPT,
@@ -16,7 +16,9 @@ import {
 
 export interface QuickFixPopoverProps {
   currentText: string
+  isSelectionOnly?: boolean
   onApplyText: (newText: string) => void
+  onDirectStrip?: (strippedText: string) => void
   onClose: () => void
   // Backwards compatibility props:
   word?: string
@@ -27,12 +29,16 @@ export interface QuickFixPopoverProps {
 
 export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
   currentText,
+  isSelectionOnly = false,
   onApplyText,
+  onDirectStrip,
   onClose,
   onSelectCandidate,
 }) => {
   const [userPrompt, setUserPrompt] = useState('')
-  const [activePreset, setActivePreset] = useState<'none' | 'harokati' | 'pegonBaku' | 'maknani'>('none')
+  const [activePreset, setActivePreset] = useState<'none' | 'harokati' | 'pegonBaku' | 'maknani'>(
+    'none',
+  )
   const [previewText, setPreviewText] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -46,8 +52,11 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
   const handleStripHarakatClick = () => {
     setErrorMsg(null)
     setActivePreset('none')
-    const stripped = stripHarakat(currentText)
+    const stripped = stripHarakatSelection(currentText)
     setPreviewText(stripped)
+    if (onDirectStrip) {
+      onDirectStrip(stripped)
+    }
   }
 
   // 2. Eksekusi Preset AI (Harakati, Pegon Baku, Maknani)
@@ -62,13 +71,16 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
 
       if (preset === 'harokati') {
         sysPrompt = HAROKATI_SYSTEM_PROMPT
-        instruction = 'Beri tanda baca dan harakat/syakal lengkap yang tepat sesuai kaidah gramatikal pada teks ini.'
+        instruction =
+          'Beri tanda baca dan harakat/syakal lengkap yang tepat sesuai kaidah gramatikal pada teks ini.'
       } else if (preset === 'pegonBaku') {
         sysPrompt = PEGON_BAKU_SYSTEM_PROMPT
-        instruction = 'Tuliskan dan sempurnakan teks ini ke dalam ejaan Aksara Pegon Baku Pesantren Nusantara yang paling akurat sesuai kaidah emas Pegon.'
+        instruction =
+          'Tuliskan dan sempurnakan teks ini ke dalam ejaan Aksara Pegon Baku Pesantren Nusantara yang paling akurat sesuai kaidah emas Pegon.'
       } else if (preset === 'maknani') {
         sysPrompt = MAKNANI_SYSTEM_PROMPT
-        instruction = 'Berikan pemaknaan gandul tradisi pesantren salaf pada teks ini dengan kaidah pemosisian bacaan lisan yang tepat (kata pengantar seperti (iku), (sopo), (opo), dll diletakkan PERSIS SEBELUM lafadz bersangkutan, contoh: زَيْدٌ (utawi Zaid) (iku) قَائِمٌ (wong kang ngadeg)) tanpa kode singkatan tarkib agar ramah Text-to-Speech (TTS).'
+        instruction =
+          'Berikan pemaknaan gandul tradisi pesantren salaf pada teks ini dengan kaidah pemosisian bacaan lisan yang tepat (kata pengantar seperti (iku), (sopo), (opo), dll diletakkan PERSIS SEBELUM lafadz bersangkutan, contoh: زَيْدٌ (utawi Zaid) (iku) قَائِمٌ (wong kang ngadeg)) tanpa kode singkatan tarkib agar ramah Text-to-Speech (TTS).'
       }
 
       const res = await callAiTextPrompt(currentText, instruction, sysPrompt)
@@ -92,7 +104,7 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
       const res = await callAiTextPrompt(
         currentText,
         userPrompt.trim(),
-        'Anda adalah asisten ahli filologi Turats dan naskah Pegon Nusantara. Modifikasi teks sesuai instruksi pengguna secara presisi.'
+        'Anda adalah asisten ahli filologi Turats dan naskah Pegon Nusantara. Modifikasi teks sesuai instruksi pengguna secara presisi.',
       )
       setPreviewText(res)
       setLastExecuted({ type: 'custom', customPrompt: userPrompt.trim() })
@@ -140,7 +152,35 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
         </button>
       </div>
 
-      {/* Teks Baris Aktif */}
+      {/* Teks Baris / Teks Terseleksi */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: 2,
+        }}
+      >
+        <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+          {isSelectionOnly
+            ? 'Teks yang Diblok (Hanya bagian ini yang diubah):'
+            : 'Teks Baris Saat Ini:'}
+        </span>
+        {isSelectionOnly && (
+          <span
+            style={{
+              fontSize: '9.5px',
+              fontWeight: 700,
+              padding: '1px 5px',
+              borderRadius: '4px',
+              background: 'rgba(16, 185, 129, 0.12)',
+              color: '#059669',
+            }}
+          >
+            SELEKSI AKTIF
+          </span>
+        )}
+      </div>
       <div
         className="ai-prompt-source-box"
         style={{
@@ -156,9 +196,13 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
           overflowY: 'auto',
           color: 'var(--text-primary)',
         }}
-        title="Teks Baris Saat Ini"
+        title={
+          isSelectionOnly
+            ? 'Hanya kata/teks yang diblok ini yang akan diubah'
+            : 'Teks Baris Saat Ini'
+        }
       >
-        {currentText || '(Baris kosong)'}
+        {currentText || '(Kosong)'}
       </div>
 
       {/* Preset Action Chips */}
@@ -171,9 +215,14 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
           <button
             type="button"
             className="ai-preset-chip"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleStripHarakatClick}
             disabled={isLoading}
-            title="Hilangkan seluruh harakat/syakal secara instan (Programatik murni tanpa kuota AI)"
+            title={
+              isSelectionOnly
+                ? 'Hilangkan harakat HANYA pada teks yang diblok (Mendukung Undo Ctrl+Z)'
+                : 'Hilangkan seluruh harakat/syakal secara instan (Mendukung Undo Ctrl+Z)'
+            }
           >
             <IconStripHarakat size={12} />
             <span>Hapus Harakat (Instan)</span>
@@ -266,14 +315,32 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
 
       {/* Error Message */}
       {errorMsg && (
-        <div style={{ fontSize: '11px', color: 'var(--danger, #ef4444)', padding: '4px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.08)' }}>
+        <div
+          style={{
+            fontSize: '11px',
+            color: 'var(--danger, #ef4444)',
+            padding: '4px 6px',
+            borderRadius: '4px',
+            background: 'rgba(239, 68, 68, 0.08)',
+          }}
+        >
           {errorMsg}
         </div>
       )}
 
       {/* Loading Spinner */}
       {isLoading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '12px 0',
+            fontSize: '12px',
+            color: 'var(--text-secondary)',
+          }}
+        >
           <IconSparkles size={16} className="rotating-icon" color="var(--word-blue, #185abd)" />
           <span>Memproses perubahan dengan AI...</span>
         </div>
@@ -283,7 +350,9 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
       {previewText !== null && !isLoading && (
         <div className="ai-prompt-preview-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--word-blue, #185abd)' }}>
+            <span
+              style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--word-blue, #185abd)' }}
+            >
               Pratinjau Hasil:
             </span>
             {lastExecuted && (
@@ -291,7 +360,14 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
                 type="button"
                 onClick={handleRegenerate}
                 className="btn-card-icon"
-                style={{ height: '20px', padding: '0 6px', fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                style={{
+                  height: '20px',
+                  padding: '0 6px',
+                  fontSize: '10px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
                 title="Buat ulang hasil dengan AI"
               >
                 <IconRefresh size={11} />
@@ -352,10 +428,14 @@ export const QuickFixPopover: React.FC<QuickFixPopoverProps> = ({
                 alignItems: 'center',
                 gap: 4,
               }}
-              title="Terapkan teks ini ke baris naskah"
+              title={
+                isSelectionOnly
+                  ? 'Ganti kata/teks yang diblok dengan hasil ini (Mendukung Undo Ctrl+Z)'
+                  : 'Terapkan teks ini ke baris naskah (Mendukung Undo Ctrl+Z)'
+              }
             >
               <IconCheck size={12} />
-              <span>Terapkan ke Baris</span>
+              <span>{isSelectionOnly ? 'Timpa Teks Seleksi (Ctrl+Z)' : 'Terapkan (Ctrl+Z)'}</span>
             </button>
           </div>
         </div>

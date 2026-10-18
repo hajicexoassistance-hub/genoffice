@@ -11,6 +11,7 @@ import {
   IconHistory,
   IconCheck,
   IconTrash,
+  IconApplyWord,
 } from '../components/icons/ManuscriberIcons'
 
 interface ManuscriberSidebarProps {
@@ -23,7 +24,9 @@ type SidebarTab = 'pdf' | 'history'
  * Custom action buttons rendered in the main sidebar header (app bar)
  * to the left of the close button, separated by a subtle divider.
  */
-export const ManuscriberSidebarHeaderActions: React.FC<{ context: DocxPluginContext }> = ({ context }) => {
+export const ManuscriberSidebarHeaderActions: React.FC<{ context: DocxPluginContext }> = ({
+  context,
+}) => {
   const store = useManuscriberPluginStore()
   const { isKeyboardVisible } = store
 
@@ -42,7 +45,9 @@ export const ManuscriberSidebarHeaderActions: React.FC<{ context: DocxPluginCont
         type="button"
         className={`ai-header-btn ${isKeyboardVisible ? 'active' : ''}`}
         onClick={() => store.setIsKeyboardVisible(!isKeyboardVisible)}
-        title={isKeyboardVisible ? 'Sembunyikan Keyboard Pegon' : 'Tampilkan Papan Ketik Pegon 3-in-1'}
+        title={
+          isKeyboardVisible ? 'Sembunyikan Keyboard Pegon' : 'Tampilkan Papan Ketik Pegon 3-in-1'
+        }
         aria-label="Papan Ketik Pegon"
       >
         <IconKeyboard size={14} />
@@ -74,7 +79,10 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
   const handleTranscriptionSuccess = (_pageNo: number, count: number) => {
     // Otomatis buka Workbench di tengah saat transkripsi selesai
     context.ui.openCanvasView()
-    context.ui.showToast(`Transkripsi selesai (${count} blok). Membuka Workbench Pengeditan...`, 'success')
+    context.ui.showToast(
+      `Transkripsi selesai (${count} blok). Membuka Workbench Pengeditan...`,
+      'success',
+    )
   }
 
   const handleRestoreSession = (id: string, pageNo: number) => {
@@ -95,7 +103,11 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
   }
 
   const handleClearDocumentSession = async () => {
-    if (!window.confirm('Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?')) {
+    if (
+      !window.confirm(
+        'Hapus riwayat naskah PDF dan baris tashih yang tertaut pada dokumen Word ini?',
+      )
+    ) {
       return
     }
     if (store.activeDocKey) {
@@ -131,7 +143,9 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
       >
         <IconHistory size={12} />
         <span>Riwayat</span>
-        {scanSessions.length > 0 && <span className="sidebar-tab-badge">{scanSessions.length}</span>}
+        {scanSessions.length > 0 && (
+          <span className="sidebar-tab-badge">{scanSessions.length}</span>
+        )}
       </button>
     </div>
   )
@@ -224,9 +238,25 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
             />
           </div>
         ) : (
-          <div className="sidebar-history-wrapper" style={{ padding: '12px', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+          <div
+            className="sidebar-history-wrapper"
+            style={{
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              overflowY: 'auto',
+            }}
+          >
             {/* History Summary Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '12px',
+              }}
+            >
               <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
                 {scanSessions.length} Sesi Pemindaian
               </span>
@@ -234,7 +264,12 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
                 type="button"
                 className="btn-pdf-tool"
                 onClick={handleOpenWorkbench}
-                style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                style={{
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
                 title="Buka Workbench Staging & Tashih Layar Penuh"
               >
                 <IconWorkbench size={12} />
@@ -244,13 +279,30 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
 
             {/* Sessions List */}
             {scanSessions.length === 0 ? (
-              <div className="sidebar-empty-staging" style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, opacity: 0.6 }}>
+              <div
+                className="sidebar-empty-staging"
+                style={{
+                  textAlign: 'center',
+                  padding: '40px 16px',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginBottom: 12,
+                    opacity: 0.6,
+                  }}
+                >
                   <IconHistory size={36} />
                 </div>
-                <p style={{ fontWeight: 600, fontSize: '13px', margin: '0 0 4px' }}>Belum Ada Riwayat Transkripsi</p>
+                <p style={{ fontWeight: 600, fontSize: '13px', margin: '0 0 4px' }}>
+                  Belum Ada Riwayat Transkripsi
+                </p>
                 <p style={{ fontSize: '11.5px', margin: 0, opacity: 0.85, lineHeight: 1.5 }}>
-                  Buka tab <strong>Naskah PDF</strong> lalu klik tombol <strong>Transkripsi</strong> pada halaman naskah fisik Anda.
+                  Buka tab <strong>Naskah PDF</strong> lalu klik tombol <strong>Transkripsi</strong>{' '}
+                  pada halaman naskah fisik Anda.
                 </p>
               </div>
             ) : (
@@ -269,22 +321,82 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
-                        Halaman {session.pageNo}
-                      </span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          Halaman {session.pageNo}
+                        </span>
+                        {session.commitCount && session.commitCount > 0 ? (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              background: 'var(--accent, #c43e1c)',
+                              color: '#ffffff',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              letterSpacing: '0.02em',
+                            }}
+                            title={`Sudah diterapkan / di-commit ke Word sebanyak ${session.commitCount}x`}
+                          >
+                            {session.commitCount}x
+                          </span>
+                        ) : null}
+                      </div>
                       <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
                         {session.timestamp}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div
+                      style={{
+                        fontSize: '11.5px',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
                       <span>{session.blockCount} blok teks naskah</span>
                       <span>•</span>
-                      <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                        <IconCheck size={11} />
-                        <span>Tersimpan</span>
-                      </span>
+                      {session.commitCount && session.commitCount > 0 ? (
+                        <span
+                          style={{
+                            color: 'var(--accent, #c43e1c)',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <IconApplyWord size={11} color="var(--accent, #c43e1c)" />
+                          <span>({session.commitCount}x)</span>
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            color: 'var(--success)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '2px',
+                          }}
+                        >
+                          <IconCheck size={11} />
+                          <span>Tersimpan</span>
+                        </span>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
@@ -332,4 +444,3 @@ export const ManuscriberSidebar: React.FC<ManuscriberSidebarProps> = ({ context 
     </div>
   )
 }
-

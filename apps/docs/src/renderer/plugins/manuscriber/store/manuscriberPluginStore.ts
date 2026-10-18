@@ -25,6 +25,8 @@ export interface ScanSession {
   blockCount: number
   verifiedCount: number
   lines: StagingLine[]
+  commitCount?: number
+  lastCommittedAt?: string
 }
 
 export interface ManuscriberPluginState {
@@ -45,18 +47,20 @@ export interface ManuscriberPluginState {
   zoom: number
   pageStatuses: Record<number, PageTranscriptionStatus>
   pagesMeta: Record<number, PageMeta>
+  transcribeRequestPage: number | null
 
   // ── Staging & Tashih ────────────────────────────────────────────────────────
   lines: StagingLine[]
   activeLineId: string | null
+  activeSessionId: string | null
   isFocusMode: boolean
   stagingFontSize: number
   scanSessions: ScanSession[]
 
-
   // ── Papan Ketik Pegon ───────────────────────────────────────────────────────
   isKeyboardVisible: boolean
   isKeyboardOpen: boolean
+  isKeyboardMinimized: boolean
   keyboardMode: KeyboardInputMode
   activeInputElement: HTMLElement | null
 
@@ -80,11 +84,14 @@ export interface ManuscriberPluginState {
   setZoomScale: (scale: number) => void
   setZoom: (zoom: number) => void
   setPageStatus: (page: number, status: PageTranscriptionStatus, error?: string) => void
+  requestTranscribe: (pageNo?: number) => void
+  clearTranscribeRequest: () => void
   setLines: (lines: StagingLine[]) => void
   addPageLines: (pageNo: number, newLines: StagingLine[]) => void
   addScanSession: (session: ScanSession) => void
   deleteScanSession: (id: string) => void
   restoreScanSession: (id: string) => void
+  recordCommit: (pageNo: number, committedLines: StagingLine[]) => void
   addLine: (line: Partial<StagingLine>, afterId?: string) => void
   updateLine: (id: string, updates: Partial<StagingLine>) => void
   updateLineText: (id: string, text: string) => void
@@ -93,14 +100,20 @@ export interface ManuscriberPluginState {
   deleteLine: (id: string) => void
   removeLine: (id: string) => void
   markAllVerified: () => void
+  markPageVerified: (pageNo?: number) => void
+  clearPageLines: (pageNo: number) => void
   setActiveLineId: (id: string | null, openFocus?: boolean) => void
+  setActiveSessionId: (id: string | null) => void
   setIsFocusMode: (focus: boolean) => void
   setStagingFontSize: (size: number) => void
   increaseStagingFontSize: () => void
   decreaseStagingFontSize: () => void
   resetStagingFontSize: () => void
   setIsKeyboardVisible: (visible: boolean) => void
+  toggleKeyboardVisible: () => void
   setKeyboardOpen: (open: boolean) => void
+  setIsKeyboardMinimized: (minimized: boolean) => void
+  toggleKeyboardMinimized: () => void
   setKeyboardMode: (mode: KeyboardInputMode) => void
   setActiveInput: (el: HTMLElement | null) => void
   setVisionConfig: (config: VisionProviderConfig) => void
@@ -119,10 +132,7 @@ export interface ManuscriberPluginState {
  * Lightweight Zero-Dependency Store Factory (Zustand replacement)
  */
 function createStore<T extends object>(
-  initializer: (
-    set: (partial: Partial<T> | ((state: T) => Partial<T>)) => void,
-    get: () => T
-  ) => T
+  initializer: (set: (partial: Partial<T> | ((state: T) => Partial<T>)) => void, get: () => T) => T,
 ) {
   let state: T
   const listeners = new Set<() => void>()
@@ -147,7 +157,7 @@ function createStore<T extends object>(
     return useSyncExternalStore(
       subscribe,
       () => (selector ? selector(state) : (state as unknown as U)),
-      () => (selector ? selector(state) : (state as unknown as U))
+      () => (selector ? selector(state) : (state as unknown as U)),
     )
   }
 
@@ -191,15 +201,18 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   zoom: 1.0,
   pageStatuses: {},
   pagesMeta: {},
+  transcribeRequestPage: null,
 
   lines: [],
   activeLineId: null,
+  activeSessionId: null,
   isFocusMode: false,
   stagingFontSize: getInitialStagingFontSize(),
   scanSessions: [],
 
   isKeyboardVisible: false,
   isKeyboardOpen: false,
+  isKeyboardMinimized: false,
   keyboardMode: 'pegon',
   activeInputElement: null,
 
@@ -237,11 +250,21 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
           pageNumber: page,
           status,
           linesCount: s.lines.filter((l) => (l.pageNo || l.pageNumber) === page).length,
-          verifiedCount: s.lines.filter((l) => (l.pageNo || l.pageNumber) === page && l.status === 'verified').length,
+          verifiedCount: s.lines.filter(
+            (l) => (l.pageNo || l.pageNumber) === page && l.status === 'verified',
+          ).length,
           error,
         },
       },
     }))
+  },
+
+  requestTranscribe: (pageNo) => {
+    const page = pageNo ?? get().currentPage ?? 1
+    set({ transcribeRequestPage: page })
+  },
+  clearTranscribeRequest: () => {
+    set({ transcribeRequestPage: null })
   },
 
   setLines: (newLines) => {
@@ -266,12 +289,14 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
   addScanSession: (session) => {
     set((s) => ({
       scanSessions: [session, ...s.scanSessions.filter((x) => x.id !== session.id)],
+      activeSessionId: session.id,
     }))
   },
 
   deleteScanSession: (id) => {
     set((s) => ({
       scanSessions: s.scanSessions.filter((x) => x.id !== id),
+      activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
     }))
   },
 
@@ -280,7 +305,42 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
     if (target && target.lines) {
       get().addPageLines(target.pageNo, target.lines)
       get().setCurrentPage(target.pageNo)
+      set({ activeSessionId: id })
     }
+  },
+
+  recordCommit: (pageNo, committedLines) => {
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const verifiedCount = committedLines.filter((l) => l.status === 'verified').length
+
+    set((s) => {
+      const existingIdx = s.scanSessions.findIndex((x) => x.pageNo === pageNo)
+      if (existingIdx >= 0) {
+        const updated = [...s.scanSessions]
+        const prev = updated[existingIdx]
+        updated[existingIdx] = {
+          ...prev,
+          commitCount: (prev.commitCount || 0) + 1,
+          lastCommittedAt: timeStr,
+          blockCount: committedLines.length,
+          verifiedCount,
+        }
+        return { scanSessions: updated }
+      } else {
+        const newSession: ScanSession = {
+          id: `session_p${pageNo}_${Date.now()}`,
+          pageNo,
+          timestamp: now.toLocaleString(),
+          blockCount: committedLines.length,
+          verifiedCount,
+          lines: committedLines,
+          commitCount: 1,
+          lastCommittedAt: timeStr,
+        }
+        return { scanSessions: [newSession, ...s.scanSessions] }
+      }
+    })
   },
 
   addLine: (lineData, afterId) => {
@@ -354,12 +414,34 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
     }))
   },
 
+  markPageVerified: (pageNo) => {
+    const targetPage = pageNo ?? get().currentPage ?? 1
+    set((s) => ({
+      lines: s.lines.map((l) =>
+        (l.pageNo || l.pageNumber || 1) === targetPage ? { ...l, status: 'verified' as const } : l,
+      ),
+    }))
+  },
+
+  clearPageLines: (pageNo) => {
+    const targetPage = pageNo ?? get().currentPage ?? 1
+    set((s) => {
+      const remaining = s.lines.filter((l) => (l.pageNo || l.pageNumber || 1) !== targetPage)
+      return {
+        lines: remaining,
+        activeLineId: remaining[0]?.id || null,
+      }
+    })
+  },
+
   setActiveLineId: (id, openFocus = false) => {
     set({
       activeLineId: id,
       isFocusMode: openFocus ? true : get().isFocusMode,
     })
   },
+
+  setActiveSessionId: (id) => set({ activeSessionId: id }),
 
   setIsFocusMode: (isFocusMode) => set({ isFocusMode }),
   setStagingFontSize: (size) => {
@@ -392,7 +474,11 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
     set({ stagingFontSize: DEFAULT_STAGING_FONT_SIZE })
   },
   setIsKeyboardVisible: (visible) => set({ isKeyboardVisible: visible, isKeyboardOpen: visible }),
+  toggleKeyboardVisible: () =>
+    set((s) => ({ isKeyboardVisible: !s.isKeyboardVisible, isKeyboardOpen: !s.isKeyboardVisible })),
   setKeyboardOpen: (open) => set({ isKeyboardVisible: open, isKeyboardOpen: open }),
+  setIsKeyboardMinimized: (minimized) => set({ isKeyboardMinimized: minimized }),
+  toggleKeyboardMinimized: () => set((s) => ({ isKeyboardMinimized: !s.isKeyboardMinimized })),
   setKeyboardMode: (mode) => set({ keyboardMode: mode }),
   setActiveInput: (el) => set({ activeInputElement: el }),
   setVisionConfig: (config) => {
@@ -406,17 +492,23 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
 
   prevPointer: () => {
     const { lines, activeLineId } = get()
+    if (lines.length === 0) return
     const idx = lines.findIndex((l) => l.id === activeLineId)
     if (idx > 0) {
       set({ activeLineId: lines[idx - 1].id })
+    } else if (idx === -1 && lines.length > 0) {
+      set({ activeLineId: lines[0].id })
     }
   },
 
   nextPointer: () => {
     const { lines, activeLineId } = get()
+    if (lines.length === 0) return
     const idx = lines.findIndex((l) => l.id === activeLineId)
     if (idx >= 0 && idx < lines.length - 1) {
       set({ activeLineId: lines[idx + 1].id })
+    } else if (idx === -1 && lines.length > 0) {
+      set({ activeLineId: lines[0].id })
     }
   },
 
@@ -463,9 +555,11 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
       lines: [],
       pagesMeta: {},
       pageStatuses: {},
+      transcribeRequestPage: null,
       scanSessions: [],
       activeLineId: null,
       isFocusMode: false,
+      isKeyboardMinimized: false,
       lastSavedTimestamp: null,
     })
   },
@@ -485,8 +579,10 @@ export const useManuscriberPluginStore = createStore<ManuscriberPluginState>((se
       lines: [],
       pagesMeta: {},
       pageStatuses: {},
+      transcribeRequestPage: null,
       activeLineId: null,
       isFocusMode: false,
+      isKeyboardMinimized: false,
     })
   },
 }))

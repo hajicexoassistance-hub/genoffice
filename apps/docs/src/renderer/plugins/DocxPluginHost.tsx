@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  createContext,
+  useContext,
+} from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/core'
@@ -18,6 +26,7 @@ import {
   PluginStatusBar,
   PluginCanvasView,
 } from './ui'
+import { showToast as emitToast } from '../components/toast-bus'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal Context (not exposed to plugin authors)
@@ -117,19 +126,40 @@ export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPl
     })),
   )
 
-  const updateRuntime = useCallback(
-    (pluginId: string, patch: Partial<PluginRuntimeState>) => {
-      setRuntimeStates((prev) =>
-        prev.map((rs) => (rs.manifest.id === pluginId ? { ...rs, ...patch } : rs)),
-      )
-    },
-    [],
-  )
+  const updateRuntime = useCallback((pluginId: string, patch: Partial<PluginRuntimeState>) => {
+    setRuntimeStates((prev) =>
+      prev.map((rs) => (rs.manifest.id === pluginId ? { ...rs, ...patch } : rs)),
+    )
+  }, [])
+
+  // ── Global Hotkey: Ctrl + T untuk Buka / Tutup Staging Workbench ──────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (e.key === 't' || e.key === 'T' || e.code === 'KeyT')
+      ) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setRuntimeStates((prev) =>
+          prev.map((rs) => {
+            if (rs.manifest.id === 'manuscriber' || rs.manifest.canvasView) {
+              return { ...rs, canvasViewOpen: !rs.canvasViewOpen }
+            }
+            return rs
+          }),
+        )
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [])
 
   // ── Toast target element ────────────────────────────────────────────────────
-  const toastRef = useRef<((msg: string, kind?: 'info' | 'success' | 'error') => void) | null>(
-    null,
-  )
+  const toastRef = useRef<((msg: string, kind?: 'info' | 'success' | 'error') => void) | null>(null)
 
   // ── Build per-plugin context ────────────────────────────────────────────────
   const buildContext = useCallback(
@@ -175,7 +205,8 @@ export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPl
               const { state } = editor
               const { $to } = state.selection
               const depth = $to.depth > 0 ? 1 : 0
-              const insertPos = depth > 0 ? $to.after(depth) : Math.min(state.selection.to, state.doc.content.size)
+              const insertPos =
+                depth > 0 ? $to.after(depth) : Math.min(state.selection.to, state.doc.content.size)
               editor
                 .chain()
                 .focus()
@@ -191,7 +222,7 @@ export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPl
         },
         ui: {
           showToast(message, kind = 'info') {
-            toastRef.current?.(message, kind)
+            emitToast(message, kind === 'error' ? 'error' : 'success')
           },
           openModal(modalId, payload) {
             updateRuntime(pluginId, { openModalId: modalId, openModalPayload: payload })
@@ -252,7 +283,9 @@ export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPl
           manifest={rs.manifest}
           active={rs.activeRibbonTab}
           context={buildContext(rs.manifest.id, rs)}
-          onActivate={(active: boolean) => updateRuntime(rs.manifest.id, { activeRibbonTab: active })}
+          onActivate={(active: boolean) =>
+            updateRuntime(rs.manifest.id, { activeRibbonTab: active })
+          }
         />
       ))}
 
@@ -288,7 +321,9 @@ export function DocxPluginHost({ editor, doc, selection: propSelection }: DocxPl
             activeModalId={rs.openModalId!}
             payload={rs.openModalPayload}
             context={buildContext(rs.manifest.id, rs)}
-            onClose={() => updateRuntime(rs.manifest.id, { openModalId: null, openModalPayload: undefined })}
+            onClose={() =>
+              updateRuntime(rs.manifest.id, { openModalId: null, openModalPayload: undefined })
+            }
           />
         ))}
 
